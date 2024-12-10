@@ -1,5 +1,11 @@
 #include "raylib.h"
 
+#define TILE_WIDTH 16
+#define TILE_HEIGHT 16
+#define GAME_AREA_WIDTH 160
+#define GAME_AREA_HEIGHT 240
+#define LEVEL_CELLS_LENGTH 150
+
 /* ---------------------------------- Type ---------------------------------- */
 typedef struct Viewport
 {
@@ -8,6 +14,17 @@ typedef struct Viewport
     Rectangle rectDest;
 } Viewport;
 
+typedef struct Grid
+{
+    int width;
+    int cells[(GAME_AREA_WIDTH / TILE_WIDTH) * (GAME_AREA_HEIGHT / TILE_HEIGHT)];
+} Grid;
+
+typedef struct GameState
+{
+    Grid level;
+} GameState;
+
 /* ----------------------- Local Variables Definition ----------------------- */
 
 Rectangle rect = { 0, 0, 32, 32};
@@ -15,33 +32,43 @@ Rectangle rect = { 0, 0, 32, 32};
 /* ----------------------- Local Function Declaration ----------------------- */
 
 static Viewport ViewportInit(int width, int height, int scale);
-static void DrawFrame(Viewport viewport);        // Update and draw one frame
+static void DrawFrame(Viewport viewport, GameState gamestate, Texture2D tex);        // Update and draw one frame
+int GridGetHeight(Grid grid);
 
 int main()
 {
     /* ----------------------------- Initialization ----------------------------- */
-    const int gameAreaWidth = 160;
-    const int gameAreaHeight = 240;
     int windowWidth = 0;
     int windowHeight = 0;
 
     /* ------------------------ Window Size and Position ------------------------ */
     InitWindow(100, 100, "Game");
-    windowWidth = gameAreaWidth * 3 * GetWindowScaleDPI().x;
-    windowHeight = gameAreaHeight * 3 * GetWindowScaleDPI().y;
+    windowWidth = GAME_AREA_WIDTH * 3 * GetWindowScaleDPI().x;
+    windowHeight = GAME_AREA_HEIGHT * 3 * GetWindowScaleDPI().y;
     SetWindowSize(windowWidth, windowHeight);
     SetWindowPosition(GetMonitorWidth(0) / 2 - windowWidth / 2, GetMonitorHeight(0) / 2 - windowHeight / 2);
 
-    Viewport viewport = ViewportInit(gameAreaWidth, gameAreaHeight, 3 * GetWindowScaleDPI().x);
+    Viewport viewport = ViewportInit(GAME_AREA_WIDTH, GAME_AREA_HEIGHT, 3 * GetWindowScaleDPI().x);
 
-    rect.x = rect.y = 0;
+    /* ---------------------------- Loading Textures ---------------------------- */
+    Texture2D tileset = LoadTexture("data/texture_tileset_01.png");
+
+    /* ----------------------------- Init Game State ---------------------------- */
+    GameState gamestate = {0};
+    gamestate.level.width = 10;
+    for (int i = 0; i < LEVEL_CELLS_LENGTH; i++)
+    {
+        gamestate.level.cells[i] = 1;
+    }
+
+    rect.x = rect.y = 32;
 
     SetTargetFPS(60);
 
     /* -------------------------------- Main Loop ------------------------------- */
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
-        DrawFrame(viewport);
+        DrawFrame(viewport, gamestate, tileset);
     }
 
     /* ---------------------------- De-Initialization --------------------------- */
@@ -51,15 +78,21 @@ int main()
 }
 
 // Update and draw game frame
-static void DrawFrame(Viewport viewport)
+static void DrawFrame(Viewport viewport, GameState gamestate, Texture2D tex)
 {
 
     /* ---------------------------- Draw in Viewport ---------------------------- */
     BeginTextureMode(viewport.renderTexture2D);
-
     ClearBackground(DARKGREEN);
-    DrawRectangle(rect.x, rect.y, rect.width, rect.height, RAYWHITE);
-    DrawCircle(0, 0, 32, GREEN);
+
+    /* ---------------------------------- Grid ---------------------------------- */
+    
+    for (int i = 0; i < LEVEL_CELLS_LENGTH; i++)
+    {
+        Rectangle src = {gamestate.level.cells[i] * TILE_WIDTH, 0, TILE_WIDTH, TILE_HEIGHT};
+        Vector2 pos = {i % gamestate.level.width * TILE_WIDTH, i / gamestate.level.width * TILE_HEIGHT};
+        DrawTextureRec(tex, src, pos, WHITE);
+    }
 
     EndTextureMode();
 
