@@ -5,6 +5,7 @@
 #define GAME_AREA_WIDTH 160
 #define GAME_AREA_HEIGHT 240
 #define LEVEL_CELLS_LENGTH 150
+#define PIXEL_SIZE 3
 
 /* ---------------------------------- Type ---------------------------------- */
 typedef struct Viewport
@@ -25,6 +26,15 @@ typedef struct GameState
     Grid level;
 } GameState;
 
+typedef struct EditorState
+{
+    int cursorX;
+    int cursorY;
+    Texture2D selector;
+} EditorState;
+
+
+
 /* ----------------------- Local Variables Definition ----------------------- */
 
 Rectangle rect = { 0, 0, 32, 32};
@@ -32,7 +42,9 @@ Rectangle rect = { 0, 0, 32, 32};
 /* ----------------------- Local Function Declaration ----------------------- */
 
 static Viewport ViewportInit(int width, int height, int scale);
-static void DrawFrame(Viewport viewport, GameState gamestate, Texture2D tex);        // Update and draw one frame
+static void DrawViewport(Viewport viewport, GameState gamestate, Texture2D tex);        // Update and draw one frame
+static void DrawEditorUI(EditorState editorState);
+static void DrawWorld(Viewport vp, GameState state, Texture2D tex);
 int GridGetHeight(Grid grid);
 
 int main()
@@ -43,8 +55,8 @@ int main()
 
     /* ------------------------ Window Size and Position ------------------------ */
     InitWindow(100, 100, "Game");
-    windowWidth = GAME_AREA_WIDTH * 3 * GetWindowScaleDPI().x;
-    windowHeight = GAME_AREA_HEIGHT * 3 * GetWindowScaleDPI().y;
+    windowWidth = GAME_AREA_WIDTH * PIXEL_SIZE * GetWindowScaleDPI().x;
+    windowHeight = GAME_AREA_HEIGHT * PIXEL_SIZE * GetWindowScaleDPI().y;
     SetWindowSize(windowWidth, windowHeight);
     SetWindowPosition(GetMonitorWidth(0) / 2 - windowWidth / 2, GetMonitorHeight(0) / 2 - windowHeight / 2);
 
@@ -52,6 +64,7 @@ int main()
 
     /* ---------------------------- Loading Textures ---------------------------- */
     Texture2D tileset = LoadTexture("data/texture_tileset_01.png");
+    Texture2D selector = LoadTexture("data/texture_ui_selector.png");
 
     /* ----------------------------- Init Game State ---------------------------- */
     GameState gamestate = {0};
@@ -61,6 +74,11 @@ int main()
         gamestate.level.cells[i] = 1;
     }
 
+    /* ---------------------------- Init Editor State --------------------------- */
+    EditorState editorState = {0};
+    editorState.cursorX = editorState.cursorY = 0;
+    editorState.selector = selector;
+
     rect.x = rect.y = 32;
 
     SetTargetFPS(60);
@@ -68,7 +86,19 @@ int main()
     /* -------------------------------- Main Loop ------------------------------- */
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
-        DrawFrame(viewport, gamestate, tileset);
+        /* --------------------------------- Inputs --------------------------------- */
+        editorState.cursorX += IsKeyPressed(KEY_RIGHT) * TILE_WIDTH + IsKeyPressed(KEY_LEFT) * -TILE_WIDTH;
+        editorState.cursorY += IsKeyPressed(KEY_DOWN) * TILE_WIDTH + IsKeyPressed(KEY_UP) * -TILE_WIDTH;
+
+        /* ---------------------------------- Draw ---------------------------------- */
+        BeginTextureMode(viewport.renderTexture2D);
+        DrawWorld(viewport, gamestate, tileset);
+        DrawEditorUI(editorState);
+        EndTextureMode();
+
+        BeginDrawing();
+        DrawViewport(viewport, gamestate, tileset);
+        EndDrawing();
     }
 
     /* ---------------------------- De-Initialization --------------------------- */
@@ -78,33 +108,31 @@ int main()
 }
 
 // Update and draw game frame
-static void DrawFrame(Viewport viewport, GameState gamestate, Texture2D tex)
+static void DrawViewport(Viewport viewport, GameState gamestate, Texture2D tex)
 {
-
-    /* ---------------------------- Draw in Viewport ---------------------------- */
-    BeginTextureMode(viewport.renderTexture2D);
-    ClearBackground(DARKGREEN);
-
-    /* ---------------------------------- Grid ---------------------------------- */
-    
-    for (int i = 0; i < LEVEL_CELLS_LENGTH; i++)
-    {
-        Rectangle src = {gamestate.level.cells[i] * TILE_WIDTH, 0, TILE_WIDTH, TILE_HEIGHT};
-        Vector2 pos = {i % gamestate.level.width * TILE_WIDTH, i / gamestate.level.width * TILE_HEIGHT};
-        DrawTextureRec(tex, src, pos, WHITE);
-    }
-
-    EndTextureMode();
-
-    /* ----------------------------- Draw in Window ----------------------------- */
-    BeginDrawing();
-
+    /* ------------------------- Draw Viewport in Window ------------------------ */
     ClearBackground(BLACK);
 
     Vector2 origin = {0.0f, 0.0f};
     DrawTexturePro(viewport.renderTexture2D.texture, viewport.rectSource, viewport.rectDest, origin, 0.0f, WHITE);
+}
 
-    EndDrawing();
+static void DrawWorld(Viewport vp, GameState state, Texture2D tex)
+{    
+    ClearBackground(DARKGREEN);
+
+    /* ---------------------------------- Grid ---------------------------------- */
+    for (int i = 0; i < LEVEL_CELLS_LENGTH; i++)
+    {
+        Rectangle src = {state.level.cells[i] * TILE_WIDTH, 0, TILE_WIDTH, TILE_HEIGHT};
+        Vector2 pos = {i % state.level.width * TILE_WIDTH, i / state.level.width * TILE_HEIGHT};
+        DrawTextureRec(tex, src, pos, WHITE);
+    }
+}
+
+static void DrawEditorUI(EditorState editorState)
+{   
+    DrawTexture(editorState.selector, editorState.cursorX, editorState.cursorY, GREEN);
 }
 
 static Viewport ViewportInit(int width, int height, int scale)
