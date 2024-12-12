@@ -42,12 +42,15 @@ Rectangle rect = { 0, 0, 32, 32};
 
 /* ----------------------- Local Function Declaration ----------------------- */
 
-static Viewport ViewportInit(int width, int height, int scale);
+const Viewport ViewportInit(int width, int height, int scale);
+
 static void DrawViewport(Viewport viewport, GameState gamestate, Texture2D tex);        // Update and draw one frame
 static void DrawEditorUI(EditorState editorState);
 static void DrawWorld(Viewport vp, GameState state, Texture2D tex);
-int GridGetHeight(Grid grid);
+
+const int GridGetHeight(Grid grid);
 static void GridSet(Grid *grid, int value, int x, int y);
+const int GridGet(const Grid *grid, int x, int y);
 
 int main()
 {
@@ -89,9 +92,10 @@ int main()
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
         /* --------------------------------- Inputs --------------------------------- */
-        if(IsKeyPressed(KEY_ENTER))
-        {
-            GridSet(&gamestate.level, 0, editorState.cursorX, editorState.cursorY);
+        if(IsKeyPressed(KEY_SPACE))
+        {   
+            int value = !GridGet(&gamestate.level, editorState.cursorX, editorState.cursorY);
+            GridSet(&gamestate.level, value, editorState.cursorX, editorState.cursorY);
         }
         editorState.cursorX += IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT);
         editorState.cursorY += IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
@@ -141,7 +145,7 @@ static void DrawEditorUI(EditorState editorState)
     DrawTexture(editorState.selector, editorState.cursorX * TILE_WIDTH, editorState.cursorY * TILE_HEIGHT, GREEN);
 }
 
-static Viewport ViewportInit(int width, int height, int scale)
+const Viewport ViewportInit(int width, int height, int scale)
 {
     Rectangle rectSource = {0, 0, width, -height};
     Rectangle rectDest = {0, 0, width * scale, height * scale};
@@ -154,6 +158,13 @@ static Viewport ViewportInit(int width, int height, int scale)
     return viewport;
 }
 
+const int GridGet(const Grid *grid, int x, int y)
+{
+    if(x < 0 || x >= grid->width) return 0;
+    if(y < 0 || y >= GridGetHeight(*grid)) return 0;
+    return grid->cells[y * grid->width + x];
+}
+
 static void GridSet(Grid *grid, int value, int x, int y)
 {
     if(x < 0 || x >= grid->width) return;
@@ -161,7 +172,7 @@ static void GridSet(Grid *grid, int value, int x, int y)
     grid->cells[y * grid->width + x] = value;
 }
 
-int GridGetHeight(Grid grid)
+const int GridGetHeight(Grid grid)
 {
     return LEVEL_CELLS_LENGTH / grid.width;
 }
