@@ -42,6 +42,7 @@ typedef struct EditorState
     int cursorX;
     int cursorY;
     Texture2D selector;
+    bool active;
 } EditorState;
 
 
@@ -78,7 +79,6 @@ const bool CheckCollisionGridPoint(const Grid *grid, int x, int y);
 
 static void PlayerMoveX(GameState *gamestate, float amount);
 static void PlayerMoveY(GameState *gamestate, float amount);
-
 const bool PlayerCollideSolid(const Player *player, Grid grid);
 
 Camera2D worldSpaceCamera = { 0 };  // Game world camera
@@ -115,7 +115,7 @@ int main()
         gamestate.level.cells[i] = 1;
     }
     LoadLevel(&gamestate.level);
-    gamestate.player.rect.x = gamestate.player.rect.y = TILE_WIDTH;
+    gamestate.player.rect.x = gamestate.player.rect.y = TILE_WIDTH+2;
     gamestate.player.rect.width = 14;
     gamestate.player.rect.height = 26;
     gamestate.player.velocity.x = gamestate.player.velocity.y = 0.0f;
@@ -124,6 +124,7 @@ int main()
     EditorState editorState = {0};
     editorState.cursorX = editorState.cursorY = 0;
     editorState.selector = selector;
+    editorState.active = false;
 
     /* -------------------------------- Main Loop ------------------------------- */
     SetTargetFPS(60);
@@ -131,42 +132,57 @@ int main()
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
         /* --------------------------------- Inputs --------------------------------- */
-        if(IsKeyDown(KEY_LEFT_CONTROL))
+        if(editorState.active == true)
         {
-            if(IsKeyPressed(KEY_S))
+            if(IsKeyDown(KEY_LEFT_CONTROL))
             {
-                SaveLevel(&gamestate.level);
+                if(IsKeyPressed(KEY_S))
+                {
+                    SaveLevel(&gamestate.level);
+                }
             }
+            if(IsKeyPressed(KEY_SPACE))
+            {   
+                int value = !GridGet(&gamestate.level, editorState.cursorX, editorState.cursorY);
+                GridSet(&gamestate.level, value, editorState.cursorX, editorState.cursorY);
+            }
+            editorState.cursorX += IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT);
+            editorState.cursorY += IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
+            if(IsKeyPressed(KEY_P)) editorState.active = false;
         }
-        if(IsKeyPressed(KEY_SPACE))
-        {   
-            int value = !GridGet(&gamestate.level, editorState.cursorX, editorState.cursorY);
-            GridSet(&gamestate.level, value, editorState.cursorX, editorState.cursorY);
+        
+        else
+        {
+            int moveCommand = IsKeyDown(KEY_RIGHT) + -IsKeyDown(KEY_LEFT);
+            int jumpCommand = IsKeyPressed(KEY_UP);
+
+            /* ---------------------------- Game State Update --------------------------- */
+            gamestate.player.velocity.y += jumpCommand * -4.0f;
+            gamestate.player.velocity.x = moveCommand * 2;
+            gamestate.player.velocity.y += 0.2f;
+            PlayerMoveX(&gamestate, gamestate.player.velocity.x);
+            PlayerMoveY(&gamestate, gamestate.player.velocity.y);
+            if(IsKeyPressed(KEY_P)) editorState.active = true;
         }
-        editorState.cursorX += IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT);
-        editorState.cursorY += IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
-
-        /* ---------------------------- Game State Update --------------------------- */
-        PlayerMoveY(&gamestate, gamestate.player.velocity.y);
-
-        gamestate.player.velocity.y += 0.1f;
 
         /* ---------------------------------- Draw ---------------------------------- */
         BeginTextureMode(viewport.renderTexture2D);
         BeginMode2D(worldSpaceCamera);
         DrawWorld(viewport, gamestate, tileset);
         EndMode2D();
-        DrawEditorUI(editorState);
+        if(editorState.active) DrawEditorUI(editorState);
         EndTextureMode();
 
         BeginDrawing();
         BeginMode2D(screenSpaceCamera);
         DrawViewport(viewport, gamestate, tileset);
+        DrawFPS(GetScreenWidth() - 95, 10);
         EndMode2D();
         EndDrawing();
     }
 
     /* ---------------------------- De-Initialization --------------------------- */
+    UnloadRenderTexture(viewport.renderTexture2D);
     CloseWindow();                  // Close window and OpenGL context
 
     return 0;
@@ -243,10 +259,10 @@ const bool CheckCollisionGridPoint(const Grid *grid, int x, int y)
 
 const bool CheckCollisionGridRec(const Grid *grid, Rectangle rect)
 {
-    if(CheckCollisionGridPoint(grid, rect.x, rect.y))                                   return true;
-    if(CheckCollisionGridPoint(grid, rect.x + rect.width, rect.y))                      return true;
-    if(CheckCollisionGridPoint(grid, rect.x + rect.width, rect.y + rect.height))        return true;
-    if(CheckCollisionGridPoint(grid, rect.x, rect.y + rect.height))                     return true;
+    if(CheckCollisionGridPoint(grid, rect.x, rect.y))                                       return true;
+    if(CheckCollisionGridPoint(grid, rect.x + rect.width - 1, rect.y))                      return true;
+    if(CheckCollisionGridPoint(grid, rect.x + rect.width - 1, rect.y + rect.height - 1))    return true;
+    if(CheckCollisionGridPoint(grid, rect.x, rect.y + rect.height - 1))                     return true;
     return false;
 }
 
@@ -277,7 +293,25 @@ static void LoadLevel(Grid *grid)
 
 static void PlayerMoveX(GameState *gamestate, float amount)
 {
+    gamestate->player.movementRemainder.x += amount;
+    int move = round(gamestate->player.movementRemainder.x);
+    if(move == 0) return;
+    gamestate->player.movementRemainder.x -= move;
+    int dir = signf(move);
+    while(move != 0)
+    {
+        Rectangle rect = gamestate->player.rect;
+        rect.x += dir;
+        if(CheckCollisionGridRec(&gamestate->level, rect))
+        {
+            gamestate->player.velocity.x = 0;
+            break;
+        }
+        gamestate->player.rect.x += dir;
+        move -= dir;
+    }
 
+    return;
 }
 
 static void PlayerMoveY(GameState *gamestate, float amount)
@@ -290,7 +324,7 @@ static void PlayerMoveY(GameState *gamestate, float amount)
     while(move != 0)
     {
         Rectangle rect = gamestate->player.rect;
-        //rect.y += dir;
+        rect.y += dir;
         if(CheckCollisionGridRec(&gamestate->level, rect))
         {
             gamestate->player.velocity.y = 0;
