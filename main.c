@@ -1,11 +1,13 @@
+#include <math.h>
 #include "raylib.h"
 
 #define TILE_WIDTH 16
 #define TILE_HEIGHT 16
-#define GAME_AREA_WIDTH 160
-#define GAME_AREA_HEIGHT 240
-#define LEVEL_CELLS_LENGTH 150
-#define LEVEL_CELLS_LAST_INDEX 149
+#define LEVEL_WIDTH 8
+#define LEVEL_HEIGHT 8
+#define LEVEL_CELLS_LENGTH LEVEL_WIDTH * LEVEL_HEIGHT
+#define GAME_AREA_WIDTH TILE_WIDTH * LEVEL_WIDTH
+#define GAME_AREA_HEIGHT TILE_HEIGHT * LEVEL_HEIGHT
 #define PIXEL_SIZE 3
 
 /* ---------------------------------- Type ---------------------------------- */
@@ -19,12 +21,20 @@ typedef struct Viewport
 typedef struct Grid
 {
     int width;
-    int cells[(GAME_AREA_WIDTH / TILE_WIDTH) * (GAME_AREA_HEIGHT / TILE_HEIGHT)];
+    int cells[LEVEL_CELLS_LENGTH];
 } Grid;
+
+typedef struct Player
+{
+    Rectangle rect;
+    Vector2 velocity;
+    Vector2 movementRemainder;
+} Player;
 
 typedef struct GameState
 {
     Grid level;
+    Player player;
 } GameState;
 
 typedef struct EditorState
@@ -38,9 +48,18 @@ typedef struct EditorState
 
 /* ----------------------- Local Variables Definition ----------------------- */
 
-Rectangle rect = { 0, 0, 32, 32};
+
 
 /* ----------------------- Local Function Declaration ----------------------- */
+
+/* -------------------------------- Utilities ------------------------------- */
+int signf(float f);
+int signf(float f)
+{
+    if (f > 0) return 1;
+    if (f < 0) return -1;
+    return 0;
+}
 
 const Viewport ViewportInit(int width, int height, int scale);
 
@@ -48,17 +67,31 @@ static void DrawViewport(Viewport viewport, GameState gamestate, Texture2D tex);
 static void DrawEditorUI(EditorState editorState);
 static void DrawWorld(Viewport vp, GameState state, Texture2D tex);
 
+static void SaveLevel(const Grid *grid);
+static void LoadLevel(Grid *grid);
+
 const int GridGetHeight(Grid grid);
 static void GridSet(Grid *grid, int value, int x, int y);
 const int GridGet(const Grid *grid, int x, int y);
+const bool CheckCollisionGridRec(const Grid *grid, Rectangle rect);
+const bool CheckCollisionGridPoint(const Grid *grid, int x, int y);
+
+static void PlayerMoveX(GameState *gamestate, float amount);
+static void PlayerMoveY(GameState *gamestate, float amount);
+
+const bool PlayerCollideSolid(const Player *player, Grid grid);
+
+Camera2D worldSpaceCamera = { 0 };  // Game world camera
+Camera2D screenSpaceCamera = { 0 }; // Smoothing camera
 
 int main()
 {
     /* ----------------------------- Initialization ----------------------------- */
-    int windowWidth = 0;
+    int windowWidth = TILE_WIDTH * LEVEL_WIDTH * PIXEL_SIZE;
     int windowHeight = 0;
 
     /* ------------------------ Window Size and Position ------------------------ */
+    //SetConfigFlags(FLAG_VSYNC_HINT);
     InitWindow(100, 100, "Game");
     windowWidth = GAME_AREA_WIDTH * PIXEL_SIZE * GetWindowScaleDPI().x;
     windowHeight = GAME_AREA_HEIGHT * PIXEL_SIZE * GetWindowScaleDPI().y;
@@ -67,31 +100,44 @@ int main()
 
     Viewport viewport = ViewportInit(GAME_AREA_WIDTH, GAME_AREA_HEIGHT, 3 * GetWindowScaleDPI().x);
 
+    worldSpaceCamera.zoom = 1.0f;
+    screenSpaceCamera.zoom = 1.0f;
+
     /* ---------------------------- Loading Textures ---------------------------- */
     Texture2D tileset = LoadTexture("data/texture_tileset_01.png");
     Texture2D selector = LoadTexture("data/texture_ui_selector.png");
 
     /* ----------------------------- Init Game State ---------------------------- */
     GameState gamestate = {0};
-    gamestate.level.width = 10;
+    gamestate.level.width = LEVEL_WIDTH;
     for (int i = 0; i < LEVEL_CELLS_LENGTH; i++)
     {
         gamestate.level.cells[i] = 1;
     }
+    LoadLevel(&gamestate.level);
+    gamestate.player.rect.x = gamestate.player.rect.y = TILE_WIDTH;
+    gamestate.player.rect.width = 14;
+    gamestate.player.rect.height = 26;
+    gamestate.player.velocity.x = gamestate.player.velocity.y = 0.0f;
 
     /* ---------------------------- Init Editor State --------------------------- */
     EditorState editorState = {0};
     editorState.cursorX = editorState.cursorY = 0;
     editorState.selector = selector;
 
-    rect.x = rect.y = 32;
-
+    /* -------------------------------- Main Loop ------------------------------- */
     SetTargetFPS(60);
 
-    /* -------------------------------- Main Loop ------------------------------- */
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
         /* --------------------------------- Inputs --------------------------------- */
+        if(IsKeyDown(KEY_LEFT_CONTROL))
+        {
+            if(IsKeyPressed(KEY_S))
+            {
+                SaveLevel(&gamestate.level);
+            }
+        }
         if(IsKeyPressed(KEY_SPACE))
         {   
             int value = !GridGet(&gamestate.level, editorState.cursorX, editorState.cursorY);
@@ -100,14 +146,23 @@ int main()
         editorState.cursorX += IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT);
         editorState.cursorY += IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
 
+        /* ---------------------------- Game State Update --------------------------- */
+        PlayerMoveY(&gamestate, gamestate.player.velocity.y);
+
+        gamestate.player.velocity.y += 0.1f;
+
         /* ---------------------------------- Draw ---------------------------------- */
         BeginTextureMode(viewport.renderTexture2D);
+        BeginMode2D(worldSpaceCamera);
         DrawWorld(viewport, gamestate, tileset);
+        EndMode2D();
         DrawEditorUI(editorState);
         EndTextureMode();
 
         BeginDrawing();
+        BeginMode2D(screenSpaceCamera);
         DrawViewport(viewport, gamestate, tileset);
+        EndMode2D();
         EndDrawing();
     }
 
@@ -138,6 +193,9 @@ static void DrawWorld(Viewport vp, GameState state, Texture2D tex)
         Vector2 pos = {i % state.level.width * TILE_WIDTH, i / state.level.width * TILE_HEIGHT};
         DrawTextureRec(tex, src, pos, WHITE);
     }
+
+    /* ------------------------------- Draw Player ------------------------------ */
+    DrawRectangleRec(state.player.rect, WHITE);
 }
 
 static void DrawEditorUI(EditorState editorState)
@@ -175,4 +233,72 @@ static void GridSet(Grid *grid, int value, int x, int y)
 const int GridGetHeight(Grid grid)
 {
     return LEVEL_CELLS_LENGTH / grid.width;
+}
+
+const bool CheckCollisionGridPoint(const Grid *grid, int x, int y)
+{
+    if(GridGet(grid, x / TILE_WIDTH, y / TILE_HEIGHT) > 0) return true;
+    return false;
+}
+
+const bool CheckCollisionGridRec(const Grid *grid, Rectangle rect)
+{
+    if(CheckCollisionGridPoint(grid, rect.x, rect.y))                                   return true;
+    if(CheckCollisionGridPoint(grid, rect.x + rect.width, rect.y))                      return true;
+    if(CheckCollisionGridPoint(grid, rect.x + rect.width, rect.y + rect.height))        return true;
+    if(CheckCollisionGridPoint(grid, rect.x, rect.y + rect.height))                     return true;
+    return false;
+}
+
+static void SaveLevel(const Grid *grid)
+{
+    SaveFileData("level.bin", (void*)grid->cells, sizeof(grid->cells));
+    return;
+}
+
+static void LoadLevel(Grid *grid)
+{
+    int dataSize = 0;
+
+    if(!FileExists("level.bin")) return;
+    unsigned char *data = 0;
+    data = LoadFileData("level.bin", &dataSize);
+
+    for(int i = 0; i < dataSize; i += 4)
+    {
+        grid->cells[i / 4] = *(data + i);
+    }
+    unsigned char c = *(data + 8);
+
+       
+
+    UnloadFileData(data);
+}
+
+static void PlayerMoveX(GameState *gamestate, float amount)
+{
+
+}
+
+static void PlayerMoveY(GameState *gamestate, float amount)
+{
+    gamestate->player.movementRemainder.y += amount;
+    int move = round(gamestate->player.movementRemainder.y);
+    if(move == 0) return;
+    gamestate->player.movementRemainder.y -= move;
+    int dir = signf(move);
+    while(move != 0)
+    {
+        Rectangle rect = gamestate->player.rect;
+        //rect.y += dir;
+        if(CheckCollisionGridRec(&gamestate->level, rect))
+        {
+            gamestate->player.velocity.y = 0;
+            break;
+        }
+        gamestate->player.rect.y += dir;
+        move -= dir;
+    }
+
+    return;
 }

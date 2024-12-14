@@ -9,6 +9,11 @@
 		"**/*.exe": true,
 	},
 	"files.associations": {
-		"raylib.h": "c"
+		"raylib.h": "c",
+		"*.m": "c",
+		"*.tcc": "c",
+		"cmath": "c",
+		"stdarg.h": "c",
+		"stdbool.h": "c"
 	}
 }
