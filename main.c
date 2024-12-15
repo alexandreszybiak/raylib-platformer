@@ -61,14 +61,17 @@ int signf(float f)
 
 const Viewport ViewportInit(int width, int height, int scale);
 
+const int RecGetCenterX(Rectangle rec){return rec.x + rec.width / 2;}
+const int RecGetCenterY(Rectangle rec){return rec.y + rec.height / 2;}
+
 static void DrawViewport(Viewport viewport, GameState gamestate, Texture2D tex);
 static void DrawEditorUI(EditorState editorState);
 static void DrawWorld(Viewport vp, GameState state, Texture2D tex);
 
 static void RoomSave(const Grid *grid);
 static void RoomLoad(Grid *room);
-const int RoomGetWidth() {return TILE_WIDTH * ROOM_WIDTH;}
-const int RoomGetHeight() {return TILE_HEIGHT * ROOM_HEIGHT;}
+const int RoomGetWidth(){return TILE_WIDTH * ROOM_WIDTH;}
+const int RoomGetHeight(){return TILE_HEIGHT * ROOM_HEIGHT;}
 
 const int GridGet(const Grid *grid, int x, int y);
 const int GridGetHeight(Grid grid);
@@ -167,9 +170,9 @@ int main()
             if(IsKeyPressed(KEY_P)) editorState.active = true;
         }
 
-        if(gamestate.currentRoom.x != floor(gamestate.player.rect.x / RoomGetWidth()))
+        if(gamestate.currentRoom.x != floor(RecGetCenterX(gamestate.player.rect) / RoomGetWidth()))
         {
-            gamestate.currentRoom.x = floor(gamestate.player.rect.x / RoomGetWidth());
+            gamestate.currentRoom.x = floor(RecGetCenterX(gamestate.player.rect) / RoomGetWidth());
             RoomLoad(&gamestate.currentRoom);
         }
         else if(gamestate.currentRoom.y != floor(gamestate.player.rect.y / RoomGetHeight()))
@@ -305,10 +308,11 @@ static void RoomSave(const Grid *grid)
         SaveFileData("level.bin", &default_data, expectedDataSize);
         return;
     }
-    int offset =  (grid->y * WORLD_WIDTH + grid->x) * (ROOM_WIDTH * ROOM_HEIGHT);
+    int offset = (grid->y * WORLD_WIDTH + grid->x) * (ROOM_WIDTH * ROOM_HEIGHT) * sizeof(int);
     for(int i = 0; i < ROOM_WIDTH * ROOM_HEIGHT; i++)
     {
-        *(data + i + offset * sizeof(int)) = grid->cells[i];
+        unsigned char *ptr = data + offset + i * sizeof(int);
+        *ptr = grid->cells[i];
     }
     SaveFileData("level.bin", data, expectedDataSize);
     UnloadFileData(data);
@@ -316,17 +320,16 @@ static void RoomSave(const Grid *grid)
 
 static void RoomLoad(Grid *room)
 {
-    int dataSize = 0;
+    int expectedDataSize = ROOM_WIDTH * ROOM_HEIGHT * WORLD_WIDTH * WORLD_HEIGHT * sizeof(int);
+    int fileDataSize = 0;
 
     if(!FileExists("level.bin")) return;
     unsigned char *data = 0;
-    data = LoadFileData("level.bin", &dataSize);
+    data = LoadFileData("level.bin", &fileDataSize);
+    
 
-    int sizeOfRoom = sizeof(room->cells);
-    int offset = room->y * ROOM_WIDTH + room->x;
-
-    // If data don't exist, make default room and return;
-    if(sizeof(*data) <= offset * sizeOfRoom)
+    // If data doesn't match the expected size, make default room and return;
+    if(fileDataSize != expectedDataSize)
     {
         for (int i = 0; i < ROOM_CELLS_LENGTH; i++)
         {
@@ -335,10 +338,13 @@ static void RoomLoad(Grid *room)
         return;
     }
 
+
     // Data exists, load it
-    for(int i = offset * sizeOfRoom; i < offset * sizeOfRoom + sizeOfRoom; i += 4)
+    int offset = (room->y * WORLD_WIDTH + room->x) * (ROOM_WIDTH * ROOM_HEIGHT) * sizeof(int);
+    for(int i = 0; i < ROOM_WIDTH * ROOM_HEIGHT; i++)
     {
-        room->cells[i / 4] = *(data + i);
+        unsigned char *ptr = data + offset + i * sizeof(int);
+        room->cells[i] = *ptr;
     }
 
     UnloadFileData(data);
