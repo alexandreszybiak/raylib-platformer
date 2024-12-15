@@ -14,6 +14,7 @@
 		"*.tcc": "c",
 		"cmath": "c",
 		"stdarg.h": "c",
-		"stdbool.h": "c"
+		"stdbool.h": "c",
+		"raymath.h": "c"
 	}
 }

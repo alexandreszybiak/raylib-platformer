@@ -26,7 +26,7 @@
 # Define required raylib variables
 PROJECT_NAME       ?= game
 RAYLIB_VERSION     ?= 5.1-dev
-RAYLIB_PATH        ?= ..\..
+RAYLIB_PATH        ?= C:\raylib\raylib
 
 # Define compiler path on Windows
 COMPILER_PATH      ?= C:/raylib/w64devkit/bin
@@ -34,6 +34,8 @@ COMPILER_PATH      ?= C:/raylib/w64devkit/bin
 # Define default options
 # One of PLATFORM_DESKTOP, PLATFORM_ANDROID, PLATFORM_WEB
 PLATFORM           ?= PLATFORM_DESKTOP
+
+EXT                ?= .exe
 
 # Locations of your newly installed library and associated headers. See ../src/Makefile
 # On Linux, if you have installed raylib but cannot compile the examples, check that
@@ -204,11 +206,6 @@ endif
 # Additional flags for compiler (if desired)
 #CFLAGS += -Wextra -Wmissing-prototypes -Wstrict-prototypes
 ifeq ($(PLATFORM),PLATFORM_DESKTOP)
-    ifeq ($(PLATFORM_OS),WINDOWS)
-        # resource file contains windows executable icon and properties
-        # -Wl,--subsystem,windows hides the console window
-        CFLAGS += $(RAYLIB_PATH)/src/raylib.rc.data -Wl,--subsystem,windows
-    endif
     ifeq ($(PLATFORM_OS),LINUX)
         ifeq ($(RAYLIB_LIBTYPE),STATIC)
             CFLAGS += -D_DEFAULT_SOURCE
@@ -274,6 +271,14 @@ endif
 LDFLAGS = -L. -L$(RAYLIB_RELEASE_PATH) -L$(RAYLIB_PATH)/src
 
 ifeq ($(PLATFORM),PLATFORM_DESKTOP)
+    ifeq ($(PLATFORM_OS),WINDOWS)
+        # resource file contains windows executable icon and properties
+        # -Wl,--subsystem,windows hides the console window
+        LDFLAGS += $(RAYLIB_PATH)/src/raylib.rc.data
+        ifeq ($(BUILD_MODE),RELEASE)
+            LDFLAGS += -Wl,--subsystem,windows
+        endif
+    endif
     ifeq ($(PLATFORM_OS),BSD)
         # Consider -L$(RAYLIB_INSTALL_PATH)
         LDFLAGS += -L. -Lsrc -L/usr/local/lib
@@ -352,9 +357,9 @@ SRC_DIR = src
 OBJ_DIR = obj
 
 # Define all object files from source files
-SRC = $(call rwildcard, ./, *.c, *.h)
-#OBJS = $(SRC:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
-OBJS = $(patsubst %.c,%.o,$(filter %.c,$(SRC)))
+SRC = $(wildcard $(SRC_DIR)/*.c) # Scan src directory for c files
+OBJS = $(SRC:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
+#OBJS = $(patsubst %.c,%.o,$(filter %.c,$(SRC)))
 
 # For Android platform we call a custom Makefile.Android
 ifeq ($(PLATFORM),PLATFORM_ANDROID)
