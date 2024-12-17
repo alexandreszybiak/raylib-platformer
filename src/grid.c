@@ -16,6 +16,14 @@ const int GridGet(const Grid *grid, int x, int y)
     return grid->cells[y * grid->width + x];
 }
 
+void GridFill(Grid *grid, int value)
+{
+    for (int i = 0; i < ROOM_CELLS_LENGTH; i++)
+    {
+        grid->cells[i] = value;
+    }
+}
+
 void GridSet(Grid *grid, int value, int x, int y)
 {
     if(x < 0 || x >= grid->width) return;
@@ -28,18 +36,18 @@ const int GridGetHeight(Grid grid)
     return ROOM_CELLS_LENGTH / grid.width;
 }
 
-const bool CheckCollisionGridPoint(const Grid *grid, int x, int y)
+const bool CheckCollisionGridTilePoint(const Grid *grid, int tile, int x, int y)
 {
-    if(GridGet(grid, (x - grid->x * RoomGetWidth()) / TILE_WIDTH, (y - grid->y * RoomGetHeight()) / TILE_HEIGHT) > 0) return true;
+    if(GridGet(grid, (x - grid->x * RoomGetWidth()) / TILE_WIDTH, (y - grid->y * RoomGetHeight()) / TILE_HEIGHT) == tile) return true;
     return false;
 }
 
-const bool CheckCollisionGridRec(const Grid *grid, Rectangle rect)
+const bool CheckCollisionGridTileRec(const Grid *grid, int tile, Rectangle rect)
 {
-    if(CheckCollisionGridPoint(grid, rect.x, rect.y))                                       return true;
-    if(CheckCollisionGridPoint(grid, rect.x + rect.width - 1, rect.y))                      return true;
-    if(CheckCollisionGridPoint(grid, rect.x + rect.width - 1, rect.y + rect.height - 1))    return true;
-    if(CheckCollisionGridPoint(grid, rect.x, rect.y + rect.height - 1))                     return true;
+    if(CheckCollisionGridTilePoint(grid, tile, rect.x, rect.y))                                       return true;
+    if(CheckCollisionGridTilePoint(grid, tile, rect.x + rect.width - 1, rect.y))                      return true;
+    if(CheckCollisionGridTilePoint(grid, tile, rect.x + rect.width - 1, rect.y + rect.height - 1))    return true;
+    if(CheckCollisionGridTilePoint(grid, tile, rect.x, rect.y + rect.height - 1))                     return true;
     return false;
 }
 
@@ -49,23 +57,23 @@ void RoomSave(const Grid *grid)
     int fileDataSize;
     unsigned char *data = 0;
     
-    if(!FileExists("level.bin"))
+    if(!FileExists(FILENAME_WORLD))
     {
         int default_data[expectedDataSize];
-        for(int i = 0; i < expectedDataSize; i++) { default_data[i] = 1;}
-        SaveFileData("level.bin", &default_data, expectedDataSize);
-        //SaveFileData("level.bin", (void*)grid->cells, sizeof(grid->cells));
+        for(int i = 0; i < expectedDataSize; i++) { default_data[i] = TILE_WALL;}
+        SaveFileData(FILENAME_WORLD, &default_data, expectedDataSize);
+        //SaveFileData(FILENAME_WORLD, (void*)grid->cells, sizeof(grid->cells));
         
     }
     
-    data = LoadFileData("level.bin", &fileDataSize);
+    data = LoadFileData(FILENAME_WORLD, &fileDataSize);
 
     if(fileDataSize != expectedDataSize)
     {
         UnloadFileData(data);
         int default_data[expectedDataSize];
-        for(int i = 0; i < expectedDataSize; i++) { default_data[i] = 1;}
-        SaveFileData("level.bin", &default_data, expectedDataSize);
+        for(int i = 0; i < expectedDataSize; i++) { default_data[i] = TILE_WALL;}
+        SaveFileData(FILENAME_WORLD, &default_data, expectedDataSize);
         return;
     }
     int offset = (grid->y * WORLD_WIDTH + grid->x) * (ROOM_WIDTH * ROOM_HEIGHT) * sizeof(int);
@@ -74,7 +82,7 @@ void RoomSave(const Grid *grid)
         unsigned char *ptr = data + offset + i * sizeof(int);
         *ptr = grid->cells[i];
     }
-    SaveFileData("level.bin", data, expectedDataSize);
+    SaveFileData(FILENAME_WORLD, data, expectedDataSize);
     UnloadFileData(data);
 }
 
@@ -83,18 +91,18 @@ void RoomLoad(Grid *room)
     int expectedDataSize = ROOM_WIDTH * ROOM_HEIGHT * WORLD_WIDTH * WORLD_HEIGHT * sizeof(int);
     int fileDataSize = 0;
 
-    if(!FileExists("level.bin")) return;
+    if(!FileExists(FILENAME_WORLD))
+    {
+        GridFill(room, TILE_WALL);
+        return;
+    }
     unsigned char *data = 0;
-    data = LoadFileData("level.bin", &fileDataSize);
+    data = LoadFileData(FILENAME_WORLD, &fileDataSize);
     
-
     // If data doesn't match the expected size, make default room and return;
     if(fileDataSize != expectedDataSize)
     {
-        for (int i = 0; i < ROOM_CELLS_LENGTH; i++)
-        {
-            room->cells[i] = 1;
-        }
+        GridFill(room, TILE_WALL);
         return;
     }
 
@@ -108,3 +116,4 @@ void RoomLoad(Grid *room)
 
     UnloadFileData(data);
 }
+

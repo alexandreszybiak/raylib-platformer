@@ -24,7 +24,7 @@
 .PHONY: all clean
 
 # Define required raylib variables
-PROJECT_NAME       ?= game
+PROJECT_NAME       ?= AlexPlatformer
 RAYLIB_VERSION     ?= 5.1-dev
 RAYLIB_PATH        ?= C:\raylib\raylib
 

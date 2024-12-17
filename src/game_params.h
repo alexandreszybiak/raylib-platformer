@@ -12,4 +12,11 @@
 #define GAME_AREA_HEIGHT TILE_HEIGHT * ROOM_HEIGHT
 #define PIXEL_SIZE 3
 
+#define TILE_EMPTY 0
+#define TILE_SAVE 1
+#define TILE_WALL 2
+
+#define FILENAME_WORLD "data/world.bin"
+#define FILENAME_SAVE "save.bin"
+
 #endif

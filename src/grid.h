@@ -18,9 +18,10 @@ const int RoomGetWidth();
 const int RoomGetHeight();
 
 void GridSet(Grid *grid, int value, int x, int y);
+void GridFill(Grid *grid, int value);
 const int GridGet(const Grid *grid, int x, int y);
 const int GridGetHeight(Grid grid);
-const bool CheckCollisionGridRec(const Grid *grid, Rectangle rect);
-const bool CheckCollisionGridPoint(const Grid *grid, int x, int y);
+const bool CheckCollisionGridTilePoint(const Grid *grid, int tile, int x, int y);
+const bool CheckCollisionGridTileRec(const Grid *grid, int tile, Rectangle rect);
 
 #endif

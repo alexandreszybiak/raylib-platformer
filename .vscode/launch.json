@@ -8,7 +8,7 @@
             "name": "Debug",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/main",
+            "program": "${workspaceFolder}/AlexPlatformer",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
@@ -42,10 +42,10 @@
             "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": false,
-            "program": "${workspaceFolder}/main",
+            "program": "${workspaceFolder}/AlexPlatformer",
             "MIMode": "gdb",
             "windows": {
-              "program": "${workspaceFolder}/main.exe",
+              "program": "${workspaceFolder}/AlexPlatformer.exe",
               "miDebuggerPath": "C:/raylib/w64devkit/bin/gdb.exe"
             },
             "osx": {

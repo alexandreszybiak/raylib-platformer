@@ -46,6 +46,11 @@ static void DrawWorld(Viewport vp, GameState state, Texture2D tex);
 static void PlayerMoveX(GameState *gamestate, float amount);
 static void PlayerMoveY(GameState *gamestate, float amount);
 
+void GameSave(GameState gameState);
+void GameLoad(GameState *gameState);
+
+void GameStateUpdateCurrentRoom(GameState *gameState);
+
 int main()
 {
     /* ----------------------------- Initialization ----------------------------- */
@@ -73,16 +78,14 @@ int main()
     /* ----------------------------- Init Game State ---------------------------- */
     GameState gamestate = {0};
     gamestate.currentRoom.width = ROOM_WIDTH;
-    for (int i = 0; i < ROOM_CELLS_LENGTH; i++)
-    {
-        gamestate.currentRoom.cells[i] = 1;
-    }
     RoomLoad(&gamestate.currentRoom);
     gamestate.player.rect.x = gamestate.player.rect.y = TILE_WIDTH+2;
     gamestate.player.rect.width = 14;
     gamestate.player.rect.height = 26;
     gamestate.player.velocity.x = gamestate.player.velocity.y = 0.0f;
     gamestate.currentRoom.x = gamestate.currentRoom.y = 0;
+    GameLoad(&gamestate);
+    GameStateUpdateCurrentRoom(&gamestate);
 
     /* ---------------------------- Init Editor State --------------------------- */
     EditorState editorState = {0};
@@ -98,11 +101,6 @@ int main()
         /* --------------------------------- Inputs --------------------------------- */
         if(editorState.active == true)
         {
-            if(IsKeyPressed(KEY_SPACE))
-            {   
-                int value = !GridGet(&gamestate.currentRoom, editorState.cursorX, editorState.cursorY);
-                GridSet(&gamestate.currentRoom, value, editorState.cursorX, editorState.cursorY);
-            }
             if(IsKeyDown(KEY_LEFT_CONTROL))
             {
                 if(IsKeyPressed(KEY_S))
@@ -116,12 +114,35 @@ int main()
             {
                 editorState.cursorX += IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT);
                 editorState.cursorY += IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
+                if(IsKeyPressed(KEY_SPACE))
+            {   
+                int setValue = 0;
+                int getValue = GridGet(&gamestate.currentRoom, editorState.cursorX, editorState.cursorY);
+                if(getValue == TILE_EMPTY) setValue = TILE_WALL;
+                if(getValue == TILE_WALL) setValue = TILE_EMPTY;
+                GridSet(&gamestate.currentRoom, setValue, editorState.cursorX, editorState.cursorY);
+            }
+            if(IsKeyPressed(KEY_S))
+            {   
+                int setValue = 0;
+                int getValue = GridGet(&gamestate.currentRoom, editorState.cursorX, editorState.cursorY);
+                if(getValue == TILE_SAVE) setValue = TILE_EMPTY;
+                if(getValue != TILE_SAVE) setValue = TILE_SAVE;
+                GridSet(&gamestate.currentRoom, setValue, editorState.cursorX, editorState.cursorY);
             }
             if(IsKeyPressed(KEY_P)) editorState.active = false;
+            }
         }
         
         else
         {
+            if(IsKeyPressed(KEY_DOWN))
+            {
+                if(CheckCollisionGridTileRec(&gamestate.currentRoom, TILE_SAVE, gamestate.player.rect))
+                {
+                    GameSave(gamestate);
+                }
+            }
             int moveCommand = IsKeyDown(KEY_RIGHT) + -IsKeyDown(KEY_LEFT);
             int jumpCommand = IsKeyPressed(KEY_UP);
 
@@ -134,16 +155,8 @@ int main()
             if(IsKeyPressed(KEY_P)) editorState.active = true;
         }
 
-        if(gamestate.currentRoom.x != floor(RecGetCenterX(gamestate.player.rect) / RoomGetWidth()))
-        {
-            gamestate.currentRoom.x = floor(RecGetCenterX(gamestate.player.rect) / RoomGetWidth());
-            RoomLoad(&gamestate.currentRoom);
-        }
-        else if(gamestate.currentRoom.y != floor(gamestate.player.rect.y / RoomGetHeight()))
-        {
-            gamestate.currentRoom.y = floor(gamestate.player.rect.y / RoomGetHeight());
-            RoomLoad(&gamestate.currentRoom);
-        }
+        GameStateUpdateCurrentRoom(&gamestate);
+
         worldSpaceCamera.target.x = gamestate.currentRoom.x * RoomGetWidth();
 
         /* ---------------------------------- Draw ---------------------------------- */
@@ -213,6 +226,41 @@ const Viewport ViewportInit(int width, int height, int scale)
     return viewport;
 }
 
+void GameStateUpdateCurrentRoom(GameState *gameState)
+{
+    if(gameState->currentRoom.x != floor(RecGetCenterX(gameState->player.rect) / RoomGetWidth()))
+    {
+        gameState->currentRoom.x = floor(RecGetCenterX(gameState->player.rect) / RoomGetWidth());
+        RoomLoad(&gameState->currentRoom);
+    }
+    else if(gameState->currentRoom.y != floor(gameState->player.rect.y / RoomGetHeight()))
+    {
+        gameState->currentRoom.y = floor(gameState->player.rect.y / RoomGetHeight());
+        RoomLoad(&gameState->currentRoom);
+    }
+}
+
+void GameSave(GameState gameState)
+{
+    int data[2];
+    data[0] = gameState.player.rect.x;
+    data[1] = gameState.player.rect.y;
+    SaveFileData(FILENAME_SAVE, &data, sizeof(data));
+}
+
+void GameLoad(GameState *gameState)
+{
+    int dataSize = 0;
+
+    void *data = LoadFileData(FILENAME_SAVE, &dataSize);
+    if(dataSize != sizeof(int) * 2) return;
+
+    int *ptr = data;
+    gameState->player.rect.x = *ptr;
+    gameState->player.rect.y = *(ptr + 1);
+    
+}
+
 static void PlayerMoveX(GameState *gamestate, float amount)
 {
     gamestate->player.movementRemainder.x += amount;
@@ -224,7 +272,7 @@ static void PlayerMoveX(GameState *gamestate, float amount)
     {
         Rectangle rect = gamestate->player.rect;
         rect.x += dir;
-        if(CheckCollisionGridRec(&gamestate->currentRoom, rect))
+        if(CheckCollisionGridTileRec(&gamestate->currentRoom, TILE_WALL, rect))
         {
             gamestate->player.velocity.x = 0;
             break;
@@ -247,7 +295,7 @@ static void PlayerMoveY(GameState *gamestate, float amount)
     {
         Rectangle rect = gamestate->player.rect;
         rect.y += dir;
-        if(CheckCollisionGridRec(&gamestate->currentRoom, rect))
+        if(CheckCollisionGridTileRec(&gamestate->currentRoom, TILE_WALL, rect))
         {
             gamestate->player.velocity.y = 0;
             break;
