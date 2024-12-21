@@ -41,17 +41,30 @@ const Viewport ViewportInit(int width, int height, int scale);
 const int RecGetCenterX(Rectangle rec){return rec.x + rec.width / 2;}
 const int RecGetCenterY(Rectangle rec){return rec.y + rec.height / 2;}
 
-static void DrawViewport(Viewport viewport, GameState gamestate, Texture2D tex);
-static void DrawEditorUI(EditorState editorState);
-static void DrawWorld(Viewport vp, GameState state, Texture2D tex);
+static void Update();
 
-static void PlayerMoveX(GameState *gamestate, float amount);
-static void PlayerMoveY(GameState *gamestate, float amount);
+static void Draw();
+static void DrawViewport();
+static void DrawEditorUI();
+static void DrawWorld();
 
-void GameSave(GameState gameState);
-void GameLoad(GameState *gameState);
+static void PlayerMoveX(float amount);
+static void PlayerMoveY(float amount);
+
+void GameSave();
+void GameLoad();
 
 void GameStateUpdateCurrentRoom(GameState *gameState);
+
+/* ------------------------------- Init Memory ------------------------------ */
+Viewport viewport = {0};
+Texture2D tex_tileset = {0};
+Texture2D tex_selector = {0};
+Camera2D worldSpaceCamera = { 0 };  // Game world camera
+Camera2D screenSpaceCamera = { 0 }; // Smoothing camera
+GameState gameState = {0};
+EditorState editorState = {0};
+GameScreen gameScreen = GAMESCREEN_TITLE;
 
 int main()
 {
@@ -66,36 +79,28 @@ int main()
     SetWindowSize(windowWidth, windowHeight);
     SetWindowPosition(GetMonitorWidth(0) / 2 - windowWidth / 2, GetMonitorHeight(0) / 2 - windowHeight / 2);
 
-    Viewport viewport = ViewportInit(GAME_AREA_WIDTH, GAME_AREA_HEIGHT, 3 * GetWindowScaleDPI().x);
-
-    Camera2D worldSpaceCamera = { 0 };  // Game world camera
-    Camera2D screenSpaceCamera = { 0 }; // Smoothing camera
+    viewport = ViewportInit(GAME_AREA_WIDTH, GAME_AREA_HEIGHT, 3 * GetWindowScaleDPI().x);
     worldSpaceCamera.zoom = 1.0f;
     screenSpaceCamera.zoom = 1.0f;
 
     /* ---------------------------- Loading Textures ---------------------------- */
-    Texture2D tileset = LoadTexture("data/texture_tileset_01.png");
-    Texture2D selector = LoadTexture("data/texture_ui_selector.png");
-
-    /* ------------------------------- Game Screen ------------------------------ */
-    GameScreen gameScreen = GAMESCREEN_TITLE;
+    tex_tileset = LoadTexture("data/texture_tileset_01.png");
+    tex_selector = LoadTexture("data/texture_ui_selector.png");
 
     /* ----------------------------- Init Game State ---------------------------- */
-    GameState gamestate = {0};
-    gamestate.currentRoom.width = ROOM_WIDTH;
-    RoomLoad(&gamestate.currentRoom);
-    gamestate.player.rect.x = gamestate.player.rect.y = TILE_WIDTH+2;
-    gamestate.player.rect.width = 14;
-    gamestate.player.rect.height = 26;
-    gamestate.player.velocity.x = gamestate.player.velocity.y = 0.0f;
-    gamestate.currentRoom.x = gamestate.currentRoom.y = 0;
-    GameLoad(&gamestate);
-    GameStateUpdateCurrentRoom(&gamestate);
+    gameState.currentRoom.width = ROOM_WIDTH;
+    RoomLoad(&gameState.currentRoom);
+    gameState.player.rect.x = gameState.player.rect.y = TILE_WIDTH+2;
+    gameState.player.rect.width = 14;
+    gameState.player.rect.height = 26;
+    gameState.player.velocity.x = gameState.player.velocity.y = 0.0f;
+    gameState.currentRoom.x = gameState.currentRoom.y = 0;
+    GameLoad();
+    GameStateUpdateCurrentRoom(&gameState);
 
     /* ---------------------------- Init Editor State --------------------------- */
-    EditorState editorState = {0};
     editorState.cursorX = editorState.cursorY = 0;
-    editorState.selector = selector;
+    editorState.selector = tex_selector;
     editorState.active = false;
 
     /* -------------------------------- Main Loop ------------------------------- */
@@ -103,107 +108,124 @@ int main()
 
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
-        if(gameScreen == GAMESCREEN_TITLE)
-        {
-            if(IsKeyPressed(KEY_SPACE)) 
-            {
-                gameScreen = GAMESCREEN_PLAY;
-            }
-            BeginDrawing();
-            BeginMode2D(screenSpaceCamera);
-            ClearBackground(GRAY);
-            DrawFPS(GetScreenWidth() - 95, 10);
-            EndMode2D();
-            EndDrawing();
-            continue;
-        }
-
-        /* --------------------------------- Inputs --------------------------------- */
-        if(editorState.active == true)
-        {
-            if(IsKeyDown(KEY_LEFT_CONTROL))
-            {
-                if(IsKeyPressed(KEY_S))
-                {
-                    RoomSave(&gamestate.currentRoom);
-                }
-                gamestate.player.rect.x += (IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT)) * RoomGetWidth();
-                gamestate.player.rect.y += (IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP)) * RoomGetHeight();
-            }
-            else
-            {
-                editorState.cursorX += IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT);
-                editorState.cursorY += IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
-                if(IsKeyPressed(KEY_SPACE))
-                {   
-                    int setValue = 0;
-                    int getValue = GridGet(&gamestate.currentRoom, editorState.cursorX, editorState.cursorY);
-                    if(getValue == TILE_EMPTY) setValue = TILE_WALL;
-                    if(getValue == TILE_WALL) setValue = TILE_EMPTY;
-                    GridSet(&gamestate.currentRoom, setValue, editorState.cursorX, editorState.cursorY);
-                }
-                if(IsKeyPressed(KEY_S))
-                {   
-                    int setValue = 0;
-                    int getValue = GridGet(&gamestate.currentRoom, editorState.cursorX, editorState.cursorY);
-                    if(getValue == TILE_SAVE) setValue = TILE_EMPTY;
-                    if(getValue != TILE_SAVE) setValue = TILE_SAVE;
-                    GridSet(&gamestate.currentRoom, setValue, editorState.cursorX, editorState.cursorY);
-                }
-                if(IsKeyPressed(KEY_P)) editorState.active = false;
-            }
-        }
-        else
-        {
-            if(IsKeyPressed(KEY_BACKSPACE)) gameScreen = GAMESCREEN_TITLE;
-            if(IsKeyPressed(KEY_DOWN))
-            {
-                if(CheckCollisionGridTileRec(&gamestate.currentRoom, TILE_SAVE, gamestate.player.rect))
-                {
-                    GameSave(gamestate);
-                }
-            }
-            int moveCommand = IsKeyDown(KEY_RIGHT) + -IsKeyDown(KEY_LEFT);
-            int jumpCommand = IsKeyPressed(KEY_UP);
-
-            /* ---------------------------- Game State Update --------------------------- */
-            gamestate.player.velocity.y += jumpCommand * -4.0f;
-            gamestate.player.velocity.x = moveCommand * 2;
-            gamestate.player.velocity.y += 0.2f;
-            PlayerMoveX(&gamestate, gamestate.player.velocity.x);
-            PlayerMoveY(&gamestate, gamestate.player.velocity.y);
-            if(IsKeyPressed(KEY_P)) editorState.active = true;
-        }
-
-        GameStateUpdateCurrentRoom(&gamestate);
-
-        worldSpaceCamera.target.x = gamestate.currentRoom.x * RoomGetWidth();
-
-        /* ---------------------------------- Draw ---------------------------------- */
-        BeginTextureMode(viewport.renderTexture2D);
-        BeginMode2D(worldSpaceCamera);
-        DrawWorld(viewport, gamestate, tileset);
-        EndMode2D();
-        if(editorState.active) DrawEditorUI(editorState);
-        EndTextureMode();
-
-        BeginDrawing();
-        BeginMode2D(screenSpaceCamera);
-        DrawViewport(viewport, gamestate, tileset);
-        DrawFPS(GetScreenWidth() - 95, 10);
-        EndMode2D();
-        EndDrawing();
+        Update();
+        Draw();
     }
 
     /* ---------------------------- De-Initialization --------------------------- */
     UnloadRenderTexture(viewport.renderTexture2D);
+    UnloadTexture(tex_selector);
+    UnloadTexture(tex_tileset);
     CloseWindow();                  // Close window and OpenGL context
 
     return 0;
 }
 
+static void Update()
+{
+    if(gameScreen == GAMESCREEN_TITLE)
+    {
+        if(IsKeyPressed(KEY_SPACE)) 
+        {
+            gameScreen = GAMESCREEN_PLAY;
+        }
+        return;
+    }
+
+    /* --------------------------------- Inputs --------------------------------- */
+    if(editorState.active == true)
+    {
+        if(IsKeyDown(KEY_LEFT_CONTROL))
+        {
+            if(IsKeyPressed(KEY_S))
+            {
+                RoomSave(&gameState.currentRoom);
+            }
+            gameState.player.rect.x += (IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT)) * RoomGetWidth();
+            gameState.player.rect.y += (IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP)) * RoomGetHeight();
+        }
+        else
+        {
+            editorState.cursorX += IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT);
+            editorState.cursorY += IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
+            if(IsKeyPressed(KEY_SPACE))
+            {   
+                int setValue = 0;
+                int getValue = GridGet(&gameState.currentRoom, editorState.cursorX, editorState.cursorY);
+                if(getValue == TILE_EMPTY) setValue = TILE_WALL;
+                if(getValue == TILE_WALL) setValue = TILE_EMPTY;
+                GridSet(&gameState.currentRoom, setValue, editorState.cursorX, editorState.cursorY);
+            }
+            if(IsKeyPressed(KEY_S))
+            {   
+                int setValue = 0;
+                int getValue = GridGet(&gameState.currentRoom, editorState.cursorX, editorState.cursorY);
+                if(getValue == TILE_SAVE) setValue = TILE_EMPTY;
+                if(getValue != TILE_SAVE) setValue = TILE_SAVE;
+                GridSet(&gameState.currentRoom, setValue, editorState.cursorX, editorState.cursorY);
+            }
+            if(IsKeyPressed(KEY_P)) editorState.active = false;
+        }
+    }
+    else
+    {
+        if(IsKeyPressed(KEY_BACKSPACE)) gameScreen = GAMESCREEN_TITLE;
+        if(IsKeyPressed(KEY_DOWN))
+        {
+            if(CheckCollisionGridTileRec(&gameState.currentRoom, TILE_SAVE, gameState.player.rect))
+            {
+                GameSave(gameState);
+            }
+        }
+        int moveCommand = IsKeyDown(KEY_RIGHT) + -IsKeyDown(KEY_LEFT);
+        int jumpCommand = IsKeyPressed(KEY_UP);
+
+        /* ---------------------------- Game State Update --------------------------- */
+        gameState.player.velocity.y += jumpCommand * -4.0f;
+        gameState.player.velocity.x = moveCommand * 2;
+        gameState.player.velocity.y += 0.2f;
+        PlayerMoveX(gameState.player.velocity.x);
+        PlayerMoveY(gameState.player.velocity.y);
+        if(IsKeyPressed(KEY_P)) editorState.active = true;
+    }
+
+    GameStateUpdateCurrentRoom(&gameState);
+
+    worldSpaceCamera.target.x = gameState.currentRoom.x * RoomGetWidth();
+}
+
+static void Draw()
+{
+    /* -------------------------------- Viewport -------------------------------- */
+    BeginTextureMode(viewport.renderTexture2D);
+    BeginMode2D(worldSpaceCamera);
+
+    if(gameScreen == GAMESCREEN_TITLE)
+    {
+        ClearBackground(GRAY);
+        
+    }
+    else
+    {
+        DrawWorld();
+        if(editorState.active) DrawEditorUI();
+
+    }
+
+    EndMode2D();
+    EndTextureMode();
+
+    /* --------------------------------- Window --------------------------------- */
+    BeginDrawing();
+    BeginMode2D(screenSpaceCamera);
+    DrawViewport();
+    DrawFPS(GetScreenWidth() - 95, 10);
+    EndMode2D();
+    EndDrawing();
+}
+
 // Update and draw game frame
-static void DrawViewport(Viewport viewport, GameState gamestate, Texture2D tex)
+static void DrawViewport()
 {
     /* ------------------------- Draw Viewport in Window ------------------------ */
     ClearBackground(BLACK);
@@ -212,25 +234,25 @@ static void DrawViewport(Viewport viewport, GameState gamestate, Texture2D tex)
     DrawTexturePro(viewport.renderTexture2D.texture, viewport.rectSource, viewport.rectDest, origin, 0.0f, WHITE);
 }
 
-static void DrawWorld(Viewport vp, GameState state, Texture2D tex)
+static void DrawWorld()
 {    
     ClearBackground(DARKGREEN);
 
     /* ---------------------------------- Grid ---------------------------------- */
     for (int i = 0; i < ROOM_CELLS_LENGTH; i++)
     {
-        Rectangle src = {state.currentRoom.cells[i] * TILE_WIDTH, 0, TILE_WIDTH, TILE_HEIGHT};
-        Vector2 pos = {i % state.currentRoom.width * TILE_WIDTH + state.currentRoom.x * RoomGetWidth(), i / state.currentRoom.width * TILE_HEIGHT + state.currentRoom.y * RoomGetHeight()};
-        DrawTextureRec(tex, src, pos, WHITE);
+        Rectangle src = {gameState.currentRoom.cells[i] * TILE_WIDTH, 0, TILE_WIDTH, TILE_HEIGHT};
+        Vector2 pos = {i % gameState.currentRoom.width * TILE_WIDTH + gameState.currentRoom.x * RoomGetWidth(), i / gameState.currentRoom.width * TILE_HEIGHT + gameState.currentRoom.y * RoomGetHeight()};
+        DrawTextureRec(tex_tileset, src, pos, WHITE);
     }
 
     /* ------------------------------- Draw Player ------------------------------ */
-    DrawRectangleRec(state.player.rect, WHITE);
+    DrawRectangleRec(gameState.player.rect, WHITE);
 }
 
-static void DrawEditorUI(EditorState editorState)
+static void DrawEditorUI()
 {   
-    DrawTexture(editorState.selector, editorState.cursorX * TILE_WIDTH, editorState.cursorY * TILE_HEIGHT, GREEN);
+    DrawTexture(tex_selector, editorState.cursorX * TILE_WIDTH, editorState.cursorY * TILE_HEIGHT, GREEN);
 }
 
 const Viewport ViewportInit(int width, int height, int scale)
@@ -260,7 +282,7 @@ void GameStateUpdateCurrentRoom(GameState *gameState)
     }
 }
 
-void GameSave(GameState gameState)
+void GameSave()
 {
     int data[2];
     data[0] = gameState.player.rect.x;
@@ -268,7 +290,7 @@ void GameSave(GameState gameState)
     SaveFileData(FILENAME_SAVE, &data, sizeof(data));
 }
 
-void GameLoad(GameState *gameState)
+void GameLoad()
 {
     int dataSize = 0;
 
@@ -276,51 +298,51 @@ void GameLoad(GameState *gameState)
     if(dataSize != sizeof(int) * 2) return;
 
     int *ptr = data;
-    gameState->player.rect.x = *ptr;
-    gameState->player.rect.y = *(ptr + 1);
+    gameState.player.rect.x = *ptr;
+    gameState.player.rect.y = *(ptr + 1);
     
 }
 
-static void PlayerMoveX(GameState *gamestate, float amount)
+static void PlayerMoveX(float amount)
 {
-    gamestate->player.movementRemainder.x += amount;
-    int move = round(gamestate->player.movementRemainder.x);
+    gameState.player.movementRemainder.x += amount;
+    int move = round(gameState.player.movementRemainder.x);
     if(move == 0) return;
-    gamestate->player.movementRemainder.x -= move;
+    gameState.player.movementRemainder.x -= move;
     int dir = signf(move);
     while(move != 0)
     {
-        Rectangle rect = gamestate->player.rect;
+        Rectangle rect = gameState.player.rect;
         rect.x += dir;
-        if(CheckCollisionGridTileRec(&gamestate->currentRoom, TILE_WALL, rect))
+        if(CheckCollisionGridTileRec(&gameState.currentRoom, TILE_WALL, rect))
         {
-            gamestate->player.velocity.x = 0;
+            gameState.player.velocity.x = 0;
             break;
         }
-        gamestate->player.rect.x += dir;
+        gameState.player.rect.x += dir;
         move -= dir;
     }
 
     return;
 }
 
-static void PlayerMoveY(GameState *gamestate, float amount)
+static void PlayerMoveY(float amount)
 {
-    gamestate->player.movementRemainder.y += amount;
-    int move = round(gamestate->player.movementRemainder.y);
+    gameState.player.movementRemainder.y += amount;
+    int move = round(gameState.player.movementRemainder.y);
     if(move == 0) return;
-    gamestate->player.movementRemainder.y -= move;
+    gameState.player.movementRemainder.y -= move;
     int dir = signf(move);
     while(move != 0)
     {
-        Rectangle rect = gamestate->player.rect;
+        Rectangle rect = gameState.player.rect;
         rect.y += dir;
-        if(CheckCollisionGridTileRec(&gamestate->currentRoom, TILE_WALL, rect))
+        if(CheckCollisionGridTileRec(&gameState.currentRoom, TILE_WALL, rect))
         {
-            gamestate->player.velocity.y = 0;
+            gameState.player.velocity.y = 0;
             break;
         }
-        gamestate->player.rect.y += dir;
+        gameState.player.rect.y += dir;
         move -= dir;
     }
 
