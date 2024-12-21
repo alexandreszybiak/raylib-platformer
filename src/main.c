@@ -33,6 +33,33 @@ typedef struct EditorState
     bool active;
 } EditorState;
 
+typedef struct Command
+{
+    unsigned int epoch;
+    unsigned int lifetime;
+} Command;
+
+typedef struct CommandState
+{
+    int move;
+    unsigned char validate;
+    unsigned char save;
+    Command jump;
+} CommandState;
+
+typedef struct EditorCommandState
+{
+    unsigned char save;
+    unsigned char load;
+    unsigned char edit;
+    char tileValue;
+    unsigned char toggle;
+    int moveX;
+    int moveY;
+    int moveCursorX;
+    int moveCursorY;
+} EditorCommandState;
+
 typedef enum GameScreen { GAMESCREEN_TITLE = 0, GAMESCREEN_LOAD, GAMESCREEN_PLAY } GameScreen;
 
 /* ----------------------- Local Function Declaration ----------------------- */
@@ -41,6 +68,7 @@ const Viewport ViewportInit(int width, int height, int scale);
 const int RecGetCenterX(Rectangle rec){return rec.x + rec.width / 2;}
 const int RecGetCenterY(Rectangle rec){return rec.y + rec.height / 2;}
 
+static void ProcessInputs();
 static void Update();
 
 static void Draw();
@@ -64,7 +92,12 @@ Camera2D worldSpaceCamera = { 0 };  // Game world camera
 Camera2D screenSpaceCamera = { 0 }; // Smoothing camera
 GameState gameState = {0};
 EditorState editorState = {0};
+EditorCommandState editorCommands = {0};
+EditorCommandState editorCommandsEmpty = {0};
+CommandState commandState = {0};
+CommandState commandStateEmpty = {0};
 GameScreen gameScreen = GAMESCREEN_TITLE;
+
 
 int main()
 {
@@ -108,6 +141,7 @@ int main()
 
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
+        ProcessInputs();
         Update();
         Draw();
     }
@@ -121,74 +155,89 @@ int main()
     return 0;
 }
 
-static void Update()
+static void ProcessInputs()
 {
+    editorCommands = editorCommandsEmpty;
+    commandState = commandStateEmpty;
+
     if(gameScreen == GAMESCREEN_TITLE)
     {
         if(IsKeyPressed(KEY_SPACE)) 
-        {
-            gameScreen = GAMESCREEN_PLAY;
-        }
+            commandState.validate = true;
         return;
     }
-
-    /* --------------------------------- Inputs --------------------------------- */
+        
     if(editorState.active == true)
     {
         if(IsKeyDown(KEY_LEFT_CONTROL))
         {
-            if(IsKeyPressed(KEY_S))
-            {
-                RoomSave(&gameState.currentRoom);
-            }
-            gameState.player.rect.x += (IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT)) * RoomGetWidth();
-            gameState.player.rect.y += (IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP)) * RoomGetHeight();
+            if(IsKeyPressed(KEY_S)) editorCommands.save = true;
+            editorCommands.moveX = (IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT));
+            editorCommands.moveY = (IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP));
+            return;
         }
-        else
-        {
-            editorState.cursorX += IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT);
-            editorState.cursorY += IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
-            if(IsKeyPressed(KEY_SPACE))
-            {   
-                int setValue = 0;
-                int getValue = GridGet(&gameState.currentRoom, editorState.cursorX, editorState.cursorY);
-                if(getValue == TILE_EMPTY) setValue = TILE_WALL;
-                if(getValue == TILE_WALL) setValue = TILE_EMPTY;
-                GridSet(&gameState.currentRoom, setValue, editorState.cursorX, editorState.cursorY);
-            }
-            if(IsKeyPressed(KEY_S))
-            {   
-                int setValue = 0;
-                int getValue = GridGet(&gameState.currentRoom, editorState.cursorX, editorState.cursorY);
-                if(getValue == TILE_SAVE) setValue = TILE_EMPTY;
-                if(getValue != TILE_SAVE) setValue = TILE_SAVE;
-                GridSet(&gameState.currentRoom, setValue, editorState.cursorX, editorState.cursorY);
-            }
-            if(IsKeyPressed(KEY_P)) editorState.active = false;
-        }
+        editorCommands.moveCursorX = IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT);
+        editorCommands.moveCursorY = IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
+        if(IsKeyPressed(KEY_SPACE)) editorCommands.tileValue = TILE_EMPTY;
+        if(IsKeyPressed(KEY_S)) editorCommands.tileValue = TILE_SAVE;
+        
+        return;
     }
-    else
+
+    if(IsKeyPressed(KEY_P)) editorCommands.toggle = true;
+
+    if(IsKeyPressed(KEY_BACKSPACE)) gameScreen = GAMESCREEN_TITLE;
+    if(IsKeyPressed(KEY_DOWN)) commandState.save = true;
+
+    commandState.move = IsKeyDown(KEY_RIGHT) + -IsKeyDown(KEY_LEFT);
+    if(IsKeyPressed(KEY_UP)) commandState.jump.epoch = 1;
+}
+
+static void Update()
+{
+    /* --------------------------- Title Screen Update -------------------------- */
+    if(gameScreen == GAMESCREEN_TITLE)
     {
-        if(IsKeyPressed(KEY_BACKSPACE)) gameScreen = GAMESCREEN_TITLE;
-        if(IsKeyPressed(KEY_DOWN))
-        {
-            if(CheckCollisionGridTileRec(&gameState.currentRoom, TILE_SAVE, gameState.player.rect))
-            {
-                GameSave(gameState);
-            }
-        }
-        int moveCommand = IsKeyDown(KEY_RIGHT) + -IsKeyDown(KEY_LEFT);
-        int jumpCommand = IsKeyPressed(KEY_UP);
-
-        /* ---------------------------- Game State Update --------------------------- */
-        gameState.player.velocity.y += jumpCommand * -4.0f;
-        gameState.player.velocity.x = moveCommand * 2;
-        gameState.player.velocity.y += 0.2f;
-        PlayerMoveX(gameState.player.velocity.x);
-        PlayerMoveY(gameState.player.velocity.y);
-        if(IsKeyPressed(KEY_P)) editorState.active = true;
+        if(commandState.validate)
+            gameScreen = GAMESCREEN_PLAY;
+        return;
     }
 
+    /* ------------------------------ Editor Update ----------------------------- */
+    if(editorState.active)
+    {
+        if(editorCommands.toggle)
+        {
+            editorState.active = false;
+            return;
+        }
+        if(editorCommands.save) RoomSave(&gameState.currentRoom);
+        gameState.player.rect.x += editorCommands.moveX * RoomGetWidth();
+        gameState.player.rect.y += editorCommands.moveY * RoomGetHeight();
+        editorState.cursorX += editorCommands.moveCursorX;
+        editorState.cursorY += editorCommands.moveCursorY;
+        if(editorCommands.tileValue > -1)
+        {
+            GridSet(&gameState.currentRoom, editorCommands.tileValue, editorState.cursorX, editorState.cursorY);
+        }
+        
+        return;
+    }
+
+    /* ---------------------------- Game State Update --------------------------- */
+    if(commandState.save && CheckCollisionGridTileRec(&gameState.currentRoom, TILE_SAVE, gameState.player.rect)) GameSave(gameState);
+
+    Rectangle rec = gameState.player.rect;
+    rec.y += 2;
+    if(CheckCollisionGridTileRec(&gameState.currentRoom, TILE_WALL, rec)){
+        gameState.player.velocity.y += commandState.jump.epoch * -4.0f;
+    }
+
+    gameState.player.velocity.x = commandState.move * 2;
+    gameState.player.velocity.y += 0.2f;
+    PlayerMoveX(gameState.player.velocity.x);
+    PlayerMoveY(gameState.player.velocity.y);
+    if(IsKeyPressed(KEY_P)) editorState.active = !editorState.active;
     GameStateUpdateCurrentRoom(&gameState);
 
     worldSpaceCamera.target.x = gameState.currentRoom.x * RoomGetWidth();
