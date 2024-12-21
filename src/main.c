@@ -33,6 +33,8 @@ typedef struct EditorState
     bool active;
 } EditorState;
 
+typedef enum GameScreen { GAMESCREEN_TITLE = 0, GAMESCREEN_LOAD, GAMESCREEN_PLAY } GameScreen;
+
 /* ----------------------- Local Function Declaration ----------------------- */
 const Viewport ViewportInit(int width, int height, int scale);
 
@@ -75,6 +77,9 @@ int main()
     Texture2D tileset = LoadTexture("data/texture_tileset_01.png");
     Texture2D selector = LoadTexture("data/texture_ui_selector.png");
 
+    /* ------------------------------- Game Screen ------------------------------ */
+    GameScreen gameScreen = GAMESCREEN_TITLE;
+
     /* ----------------------------- Init Game State ---------------------------- */
     GameState gamestate = {0};
     gamestate.currentRoom.width = ROOM_WIDTH;
@@ -98,6 +103,21 @@ int main()
 
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
+        if(gameScreen == GAMESCREEN_TITLE)
+        {
+            if(IsKeyPressed(KEY_SPACE)) 
+            {
+                gameScreen = GAMESCREEN_PLAY;
+            }
+            BeginDrawing();
+            BeginMode2D(screenSpaceCamera);
+            ClearBackground(GRAY);
+            DrawFPS(GetScreenWidth() - 95, 10);
+            EndMode2D();
+            EndDrawing();
+            continue;
+        }
+
         /* --------------------------------- Inputs --------------------------------- */
         if(editorState.active == true)
         {
@@ -115,27 +135,27 @@ int main()
                 editorState.cursorX += IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT);
                 editorState.cursorY += IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
                 if(IsKeyPressed(KEY_SPACE))
-            {   
-                int setValue = 0;
-                int getValue = GridGet(&gamestate.currentRoom, editorState.cursorX, editorState.cursorY);
-                if(getValue == TILE_EMPTY) setValue = TILE_WALL;
-                if(getValue == TILE_WALL) setValue = TILE_EMPTY;
-                GridSet(&gamestate.currentRoom, setValue, editorState.cursorX, editorState.cursorY);
-            }
-            if(IsKeyPressed(KEY_S))
-            {   
-                int setValue = 0;
-                int getValue = GridGet(&gamestate.currentRoom, editorState.cursorX, editorState.cursorY);
-                if(getValue == TILE_SAVE) setValue = TILE_EMPTY;
-                if(getValue != TILE_SAVE) setValue = TILE_SAVE;
-                GridSet(&gamestate.currentRoom, setValue, editorState.cursorX, editorState.cursorY);
-            }
-            if(IsKeyPressed(KEY_P)) editorState.active = false;
+                {   
+                    int setValue = 0;
+                    int getValue = GridGet(&gamestate.currentRoom, editorState.cursorX, editorState.cursorY);
+                    if(getValue == TILE_EMPTY) setValue = TILE_WALL;
+                    if(getValue == TILE_WALL) setValue = TILE_EMPTY;
+                    GridSet(&gamestate.currentRoom, setValue, editorState.cursorX, editorState.cursorY);
+                }
+                if(IsKeyPressed(KEY_S))
+                {   
+                    int setValue = 0;
+                    int getValue = GridGet(&gamestate.currentRoom, editorState.cursorX, editorState.cursorY);
+                    if(getValue == TILE_SAVE) setValue = TILE_EMPTY;
+                    if(getValue != TILE_SAVE) setValue = TILE_SAVE;
+                    GridSet(&gamestate.currentRoom, setValue, editorState.cursorX, editorState.cursorY);
+                }
+                if(IsKeyPressed(KEY_P)) editorState.active = false;
             }
         }
-        
         else
         {
+            if(IsKeyPressed(KEY_BACKSPACE)) gameScreen = GAMESCREEN_TITLE;
             if(IsKeyPressed(KEY_DOWN))
             {
                 if(CheckCollisionGridTileRec(&gamestate.currentRoom, TILE_SAVE, gamestate.player.rect))
