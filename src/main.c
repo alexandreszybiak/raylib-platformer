@@ -23,6 +23,7 @@ typedef struct GameState
 {
     Grid currentRoom;
     Player player;
+    int epoch;
 } GameState;
 
 typedef struct EditorState
@@ -31,28 +32,33 @@ typedef struct EditorState
     int cursorY;
     Texture2D selector;
     bool active;
+    unsigned char tileValue;
 } EditorState;
 
-typedef struct Command
+typedef struct PersistentCommand
 {
-    unsigned int epoch;
+    unsigned int expiredEpoch;
     unsigned int lifetime;
-} Command;
+    unsigned int isDown;
+} PersistentCommand;
+
+typedef struct PersistentCommands
+{
+    PersistentCommand jump;
+} PersistentCommands;
 
 typedef struct CommandState
 {
     int move;
     unsigned char validate;
     unsigned char save;
-    Command jump;
 } CommandState;
 
 typedef struct EditorCommandState
 {
     unsigned char save;
     unsigned char load;
-    unsigned char edit;
-    char tileValue;
+    unsigned char set;
     unsigned char toggle;
     int moveX;
     int moveY;
@@ -96,8 +102,8 @@ EditorCommandState editorCommands = {0};
 EditorCommandState editorCommandsEmpty = {0};
 CommandState commandState = {0};
 CommandState commandStateEmpty = {0};
+PersistentCommands persistentCommands = {0};
 GameScreen gameScreen = GAMESCREEN_TITLE;
-
 
 int main()
 {
@@ -130,6 +136,8 @@ int main()
     gameState.currentRoom.x = gameState.currentRoom.y = 0;
     GameLoad();
     GameStateUpdateCurrentRoom(&gameState);
+
+    persistentCommands.jump.lifetime = 4;
 
     /* ---------------------------- Init Editor State --------------------------- */
     editorState.cursorX = editorState.cursorY = 0;
@@ -178,8 +186,8 @@ static void ProcessInputs()
         }
         editorCommands.moveCursorX = IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT);
         editorCommands.moveCursorY = IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
-        if(IsKeyPressed(KEY_SPACE)) editorCommands.tileValue = TILE_EMPTY;
-        if(IsKeyPressed(KEY_S)) editorCommands.tileValue = TILE_SAVE;
+        if(IsKeyPressed(KEY_SPACE)) editorState.tileValue = TILE_EMPTY;
+        if(IsKeyPressed(KEY_S)) editorState.tileValue = TILE_SAVE;
         
         return;
     }
@@ -190,7 +198,7 @@ static void ProcessInputs()
     if(IsKeyPressed(KEY_DOWN)) commandState.save = true;
 
     commandState.move = IsKeyDown(KEY_RIGHT) + -IsKeyDown(KEY_LEFT);
-    if(IsKeyPressed(KEY_UP)) commandState.jump.epoch = 1;
+    if(IsKeyPressed(KEY_UP)) persistentCommands.jump.expiredEpoch = gameState.epoch + persistentCommands.jump.lifetime;
 }
 
 static void Update()
@@ -216,9 +224,9 @@ static void Update()
         gameState.player.rect.y += editorCommands.moveY * RoomGetHeight();
         editorState.cursorX += editorCommands.moveCursorX;
         editorState.cursorY += editorCommands.moveCursorY;
-        if(editorCommands.tileValue > -1)
+        if(editorState.tileValue > -1)
         {
-            GridSet(&gameState.currentRoom, editorCommands.tileValue, editorState.cursorX, editorState.cursorY);
+            GridSet(&gameState.currentRoom, editorState.tileValue, editorState.cursorX, editorState.cursorY);
         }
         
         return;
@@ -227,10 +235,16 @@ static void Update()
     /* ---------------------------- Game State Update --------------------------- */
     if(commandState.save && CheckCollisionGridTileRec(&gameState.currentRoom, TILE_SAVE, gameState.player.rect)) GameSave(gameState);
 
-    Rectangle rec = gameState.player.rect;
-    rec.y += 2;
-    if(CheckCollisionGridTileRec(&gameState.currentRoom, TILE_WALL, rec)){
-        gameState.player.velocity.y += commandState.jump.epoch * -4.0f;
+    /* ---------------------------------- Jump ---------------------------------- */
+    if(persistentCommands.jump.expiredEpoch > gameState.epoch)
+    {
+        Rectangle rec = gameState.player.rect;
+        rec.y += 2;
+        if(CheckCollisionGridTileRec(&gameState.currentRoom, TILE_WALL, rec))
+        {
+            gameState.player.velocity.y = -4.0f;
+            persistentCommands.jump.expiredEpoch = 0;
+        }
     }
 
     gameState.player.velocity.x = commandState.move * 2;
@@ -241,6 +255,8 @@ static void Update()
     GameStateUpdateCurrentRoom(&gameState);
 
     worldSpaceCamera.target.x = gameState.currentRoom.x * RoomGetWidth();
+
+    gameState.epoch++;
 }
 
 static void Draw()
