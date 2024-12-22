@@ -17,6 +17,8 @@
 		"stdbool.h": "c",
 		"raymath.h": "c",
 		"utils.h": "c",
-		"grid.h": "c"
+		"grid.h": "c",
+		"game_params.h": "c",
+		"cstdio": "c"
 	}
 }

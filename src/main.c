@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <math.h>
 #include "raylib.h"
 #include "utils.h"
@@ -24,7 +25,22 @@ typedef struct GameState
     Grid currentRoom;
     Player player;
     int epoch;
+    int saveSlot;
 } GameState;
+
+typedef struct SaveData
+{
+    int x;
+    int y;
+    bool exists;
+} SaveData;
+
+typedef struct LoadScreenState
+{
+    int selectedSlot;
+    SaveData saves[NUM_SAVES];
+
+} LoadScreenState;
 
 typedef struct EditorState
 {
@@ -50,6 +66,7 @@ typedef struct PersistentCommands
 typedef struct CommandState
 {
     int move;
+    int uiMoveVertical;
     unsigned char validate;
     unsigned char save;
 } CommandState;
@@ -78,6 +95,7 @@ static void ProcessInputs();
 static void Update();
 
 static void Draw();
+static void DrawLoadScreen();
 static void DrawViewport();
 static void DrawEditorUI();
 static void DrawWorld();
@@ -85,8 +103,11 @@ static void DrawWorld();
 static void PlayerMoveX(float amount);
 static void PlayerMoveY(float amount);
 
+static void InitLoadScreen();
+static void InitGame(int saveSlot);
+
 void GameSave();
-void GameLoad();
+SaveData GetSaveData();
 
 void GameStateUpdateCurrentRoom(GameState *gameState);
 
@@ -98,11 +119,14 @@ Camera2D worldSpaceCamera = { 0 };  // Game world camera
 Camera2D screenSpaceCamera = { 0 }; // Smoothing camera
 GameState gameState = {0};
 EditorState editorState = {0};
+LoadScreenState loadScreenState = {0};
+
 EditorCommandState editorCommands = {0};
 EditorCommandState editorCommandsEmpty = {0};
 CommandState commandState = {0};
 CommandState commandStateEmpty = {0};
 PersistentCommands persistentCommands = {0};
+
 GameScreen gameScreen = GAMESCREEN_TITLE;
 
 int main()
@@ -129,15 +153,11 @@ int main()
     /* ----------------------------- Init Game State ---------------------------- */
     gameState.currentRoom.width = ROOM_WIDTH;
     RoomLoad(&gameState.currentRoom);
-    gameState.player.rect.x = gameState.player.rect.y = TILE_WIDTH+2;
     gameState.player.rect.width = 14;
     gameState.player.rect.height = 26;
     gameState.player.velocity.x = gameState.player.velocity.y = 0.0f;
     gameState.currentRoom.x = gameState.currentRoom.y = 0;
-    GameLoad();
-    GameStateUpdateCurrentRoom(&gameState);
-
-    persistentCommands.jump.lifetime = 4;
+    persistentCommands.jump.lifetime = 5;
 
     /* ---------------------------- Init Editor State --------------------------- */
     editorState.cursorX = editorState.cursorY = 0;
@@ -163,18 +183,62 @@ int main()
     return 0;
 }
 
+static void InitLoadScreen()
+{
+    for(int i = 0; i < NUM_SAVES; i++)
+    {
+        char *filename = FILENAME_SAVE_1;
+        if(i == 1) filename = FILENAME_SAVE_2;
+        if(i == 2) filename = FILENAME_SAVE_3;
+        if(FileExists(filename))
+        {
+            loadScreenState.saves[i] = GetSaveData(filename);
+        }
+    }
+}
+
+static void InitGame(int saveSlot)
+{
+    gameState.player.velocity.x = 0;
+    gameState.player.velocity.y = 0;
+
+    if(saveSlot >= NUM_SAVES) return;
+    gameState.saveSlot = saveSlot;
+    if(!loadScreenState.saves[saveSlot].exists)
+    {
+        gameState.player.rect.x = gameState.player.rect.y = TILE_WIDTH+2;
+        return;
+    }
+
+    gameState.player.rect.x = loadScreenState.saves[saveSlot].x;
+    gameState.player.rect.y = loadScreenState.saves[saveSlot].y;
+}
+
 static void ProcessInputs()
 {
     editorCommands = editorCommandsEmpty;
     commandState = commandStateEmpty;
 
+    /* -------------------------- Process Title Screen -------------------------- */
     if(gameScreen == GAMESCREEN_TITLE)
+    {
+        if(IsKeyPressed(KEY_SPACE))
+        {
+            commandState.validate = true;
+        }
+        return;
+    }
+
+    /* --------------------------- Process Load Screen -------------------------- */
+    if(gameScreen == GAMESCREEN_LOAD)
     {
         if(IsKeyPressed(KEY_SPACE)) 
             commandState.validate = true;
+        commandState.uiMoveVertical = IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
         return;
     }
         
+    /* ----------------------------- Process Editor ----------------------------- */
     if(editorState.active == true)
     {
         if(IsKeyDown(KEY_LEFT_CONTROL))
@@ -192,9 +256,15 @@ static void ProcessInputs()
         return;
     }
 
+    /* ------------------------------ Process Game ------------------------------ */
+
     if(IsKeyPressed(KEY_P)) editorCommands.toggle = true;
 
-    if(IsKeyPressed(KEY_BACKSPACE)) gameScreen = GAMESCREEN_TITLE;
+    if(IsKeyPressed(KEY_BACKSPACE))
+    {
+        gameScreen = GAMESCREEN_TITLE;
+        worldSpaceCamera.target.x = worldSpaceCamera.target.y = 0;
+    } 
     if(IsKeyPressed(KEY_DOWN)) commandState.save = true;
 
     commandState.move = IsKeyDown(KEY_RIGHT) + -IsKeyDown(KEY_LEFT);
@@ -207,7 +277,24 @@ static void Update()
     if(gameScreen == GAMESCREEN_TITLE)
     {
         if(commandState.validate)
+        {
+            gameScreen = GAMESCREEN_LOAD;
+            InitLoadScreen();
+        }
+        return;
+    }
+
+    /* --------------------------- Update Load Screen --------------------------- */
+    if(gameScreen == GAMESCREEN_LOAD)
+    {
+        loadScreenState.selectedSlot += commandState.uiMoveVertical;
+        if(loadScreenState.selectedSlot < 0) loadScreenState.selectedSlot = 0;
+        if(loadScreenState.selectedSlot >= NUM_SAVES) loadScreenState.selectedSlot = NUM_SAVES - 1;
+        if(commandState.validate)
+        {
             gameScreen = GAMESCREEN_PLAY;
+            InitGame(loadScreenState.selectedSlot);
+        }
         return;
     }
 
@@ -270,6 +357,11 @@ static void Draw()
         ClearBackground(GRAY);
         
     }
+    else if(gameScreen == GAMESCREEN_LOAD)
+    {
+        ClearBackground(BLUE);
+        DrawLoadScreen();
+    }
     else
     {
         DrawWorld();
@@ -287,6 +379,19 @@ static void Draw()
     DrawFPS(GetScreenWidth() - 95, 10);
     EndMode2D();
     EndDrawing();
+}
+
+static void DrawLoadScreen()
+{
+    for(int i = 0; i < NUM_SAVES; i++)
+    {
+        Color color = BLACK;
+        if(loadScreenState.saves[i].exists) color = BEIGE;
+        color.a = 64;
+        
+        if(i == loadScreenState.selectedSlot) color.a = 255;
+        DrawRectangle(8, 8 + i * 26, viewport.rectSource.width - 16, 24, color);
+    }
 }
 
 // Update and draw game frame
@@ -352,19 +457,31 @@ void GameSave()
     int data[2];
     data[0] = gameState.player.rect.x;
     data[1] = gameState.player.rect.y;
-    SaveFileData(FILENAME_SAVE, &data, sizeof(data));
+
+    char *filename = FILENAME_SAVE_1;
+    if(gameState.saveSlot == 1) filename = FILENAME_SAVE_2;
+    if(gameState.saveSlot == 2) filename = FILENAME_SAVE_3;
+
+    SaveFileData(filename, &data, sizeof(data));
 }
 
-void GameLoad()
+SaveData GetSaveData(const char *filename)
 {
     int dataSize = 0;
+    SaveData save = {0};
 
-    void *data = LoadFileData(FILENAME_SAVE, &dataSize);
-    if(dataSize != sizeof(int) * 2) return;
+    if(!FileExists(filename))
+        return save;
+
+    void *data = LoadFileData(filename, &dataSize);
+    if(dataSize != sizeof(int) * 2) return save;
 
     int *ptr = data;
-    gameState.player.rect.x = *ptr;
-    gameState.player.rect.y = *(ptr + 1);
+    save.x = *ptr;
+    save.y = *(ptr + 1);
+    save.exists = true;
+
+    return save;
     
 }
 

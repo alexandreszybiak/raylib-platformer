@@ -1,3 +1,5 @@
 *.exe
 obj/
-save.bin
+save1.bin
+save2.bin
+save3.bin

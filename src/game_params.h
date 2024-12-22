@@ -17,6 +17,10 @@
 #define TILE_WALL 2
 
 #define FILENAME_WORLD "data/world.bin"
-#define FILENAME_SAVE "save.bin"
+#define FILENAME_SAVE_1 "save1.bin"
+#define FILENAME_SAVE_2 "save2.bin"
+#define FILENAME_SAVE_3 "save3.bin"
+
+#define NUM_SAVES 3
 
 #endif
