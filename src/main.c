@@ -248,17 +248,24 @@ static void ProcessInputs()
             editorCommands.moveY = (IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP));
             return;
         }
+        else if(IsKeyDown(KEY_LEFT_SHIFT))
+        {
+            if(IsKeyPressed(KEY_DOWN) && editorState.tileValue > 0) editorState.tileValue -= 1;
+            if(IsKeyPressed(KEY_UP) && editorState.tileValue < 9) editorState.tileValue += 1;
+            return;
+        }
         editorCommands.moveCursorX = IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT);
         editorCommands.moveCursorY = IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
-        if(IsKeyPressed(KEY_SPACE)) editorState.tileValue = TILE_EMPTY;
-        if(IsKeyPressed(KEY_S)) editorState.tileValue = TILE_SAVE;
+        if(IsKeyPressed(KEY_SPACE)) editorCommands.set = true;
+        if(IsKeyPressed(KEY_F1)) printf("Pressed");
+        if(IsKeyPressed(KEY_P)) editorState.active = false;
         
         return;
     }
 
     /* ------------------------------ Process Game ------------------------------ */
 
-    if(IsKeyPressed(KEY_P)) editorCommands.toggle = true;
+    if(IsKeyPressed(KEY_P)) editorState.active = true;
 
     if(IsKeyPressed(KEY_BACKSPACE))
     {
@@ -301,17 +308,12 @@ static void Update()
     /* ------------------------------ Editor Update ----------------------------- */
     if(editorState.active)
     {
-        if(editorCommands.toggle)
-        {
-            editorState.active = false;
-            return;
-        }
         if(editorCommands.save) RoomSave(&gameState.currentRoom);
         gameState.player.rect.x += editorCommands.moveX * RoomGetWidth();
         gameState.player.rect.y += editorCommands.moveY * RoomGetHeight();
         editorState.cursorX += editorCommands.moveCursorX;
         editorState.cursorY += editorCommands.moveCursorY;
-        if(editorState.tileValue > -1)
+        if(editorCommands.set && editorState.tileValue > -1)
         {
             GridSet(&gameState.currentRoom, editorState.tileValue, editorState.cursorX, editorState.cursorY);
         }
@@ -338,7 +340,6 @@ static void Update()
     gameState.player.velocity.y += 0.2f;
     PlayerMoveX(gameState.player.velocity.x);
     PlayerMoveY(gameState.player.velocity.y);
-    if(IsKeyPressed(KEY_P)) editorState.active = !editorState.active;
     GameStateUpdateCurrentRoom(&gameState);
 
     worldSpaceCamera.target.x = gameState.currentRoom.x * RoomGetWidth();
@@ -365,7 +366,10 @@ static void Draw()
     else
     {
         DrawWorld();
-        if(editorState.active) DrawEditorUI();
+        if(editorState.active)
+        {
+            DrawEditorUI();
+        }
 
     }
 
@@ -422,7 +426,12 @@ static void DrawWorld()
 
 static void DrawEditorUI()
 {   
-    DrawTexture(tex_selector, editorState.cursorX * TILE_WIDTH, editorState.cursorY * TILE_HEIGHT, GREEN);
+    int x = worldSpaceCamera.target.x + editorState.cursorX * TILE_WIDTH;
+    int y = worldSpaceCamera.target.y + editorState.cursorY * TILE_HEIGHT;
+    Vector2 pos = {x, y};
+    Rectangle src = {editorState.tileValue * TILE_WIDTH, 0, TILE_WIDTH, TILE_HEIGHT};
+    DrawTextureRec(tex_tileset, src, (Vector2){x, y}, WHITE);
+    DrawTexture(tex_selector, x, y, GREEN);
 }
 
 const Viewport ViewportInit(int width, int height, int scale)
