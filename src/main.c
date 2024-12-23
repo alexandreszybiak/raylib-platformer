@@ -6,6 +6,12 @@
 #include "grid.h"
 
 /* ---------------------------------- Type ---------------------------------- */
+typedef struct Int2
+{
+    int x;
+    int y;
+} Int2;
+
 typedef struct Viewport
 {
     RenderTexture2D renderTexture2D;
@@ -44,8 +50,8 @@ typedef struct LoadScreenState
 
 typedef struct EditorState
 {
-    int cursorX;
-    int cursorY;
+    Int2 cursorPos;
+    Int2 rectangleOrigin;
     Texture2D selector;
     bool active;
     unsigned char tileValue;
@@ -90,6 +96,8 @@ const Viewport ViewportInit(int width, int height, int scale);
 
 const int RecGetCenterX(Rectangle rec){return rec.x + rec.width / 2;}
 const int RecGetCenterY(Rectangle rec){return rec.y + rec.height / 2;}
+
+Int2 GetPositionWindowToWorldGrid(Vector2 position);
 
 static void ProcessInputs();
 static void Update();
@@ -160,7 +168,6 @@ int main()
     persistentCommands.jump.lifetime = 5;
 
     /* ---------------------------- Init Editor State --------------------------- */
-    editorState.cursorX = editorState.cursorY = 0;
     editorState.selector = tex_selector;
     editorState.active = false;
 
@@ -241,6 +248,16 @@ static void ProcessInputs()
     /* ----------------------------- Process Editor ----------------------------- */
     if(editorState.active == true)
     {
+        //SetMouseScale(6.0f,6.0f);
+        editorState.cursorPos = GetPositionWindowToWorldGrid(GetMousePosition());
+        if(!IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+        {
+            editorState.rectangleOrigin =  editorState.cursorPos;
+        }
+        if(IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+        {
+            editorState.rectangleOrigin =  editorState.cursorPos;
+        }
         if(IsKeyDown(KEY_LEFT_CONTROL))
         {
             if(IsKeyPressed(KEY_S)) editorCommands.save = true;
@@ -254,8 +271,6 @@ static void ProcessInputs()
             if(IsKeyPressed(KEY_UP) && editorState.tileValue < 9) editorState.tileValue += 1;
             return;
         }
-        editorCommands.moveCursorX = IsKeyPressed(KEY_RIGHT) + -IsKeyPressed(KEY_LEFT);
-        editorCommands.moveCursorY = IsKeyPressed(KEY_DOWN) + -IsKeyPressed(KEY_UP);
         if(IsKeyPressed(KEY_SPACE)) editorCommands.set = true;
         if(IsKeyPressed(KEY_F1)) printf("Pressed");
         if(IsKeyPressed(KEY_P)) editorState.active = false;
@@ -311,13 +326,10 @@ static void Update()
         if(editorCommands.save) RoomSave(&gameState.currentRoom);
         gameState.player.rect.x += editorCommands.moveX * RoomGetWidth();
         gameState.player.rect.y += editorCommands.moveY * RoomGetHeight();
-        editorState.cursorX += editorCommands.moveCursorX;
-        editorState.cursorY += editorCommands.moveCursorY;
-        if(editorCommands.set && editorState.tileValue > -1)
-        {
-            GridSet(&gameState.currentRoom, editorState.tileValue, editorState.cursorX, editorState.cursorY);
-        }
         
+        GameStateUpdateCurrentRoom(&gameState);
+        worldSpaceCamera.target.x = gameState.currentRoom.x * RoomGetWidth();
+        worldSpaceCamera.target.y = gameState.currentRoom.y * RoomGetHeight();
         return;
     }
 
@@ -340,9 +352,11 @@ static void Update()
     gameState.player.velocity.y += 0.2f;
     PlayerMoveX(gameState.player.velocity.x);
     PlayerMoveY(gameState.player.velocity.y);
-    GameStateUpdateCurrentRoom(&gameState);
 
+    /* ------------------------------- Room Change ------------------------------ */
+    GameStateUpdateCurrentRoom(&gameState);
     worldSpaceCamera.target.x = gameState.currentRoom.x * RoomGetWidth();
+    worldSpaceCamera.target.y = gameState.currentRoom.y * RoomGetHeight();
 
     gameState.epoch++;
 }
@@ -426,12 +440,16 @@ static void DrawWorld()
 
 static void DrawEditorUI()
 {   
-    int x = worldSpaceCamera.target.x + editorState.cursorX * TILE_WIDTH;
-    int y = worldSpaceCamera.target.y + editorState.cursorY * TILE_HEIGHT;
-    Vector2 pos = {x, y};
+    int x = fmin(editorState.cursorPos.x, editorState.rectangleOrigin.x) * TILE_WIDTH + worldSpaceCamera.target.x;
+    int y = fmin(editorState.cursorPos.y, editorState.rectangleOrigin.y) * TILE_HEIGHT + worldSpaceCamera.target.y;
+    int w = abs(editorState.cursorPos.x - editorState.rectangleOrigin.x) * TILE_WIDTH + TILE_WIDTH + worldSpaceCamera.target.x;
+    int h = abs(editorState.cursorPos.y - editorState.rectangleOrigin.y) * TILE_WIDTH + TILE_WIDTH + worldSpaceCamera.target.y;
+    
     Rectangle src = {editorState.tileValue * TILE_WIDTH, 0, TILE_WIDTH, TILE_HEIGHT};
+    
     DrawTextureRec(tex_tileset, src, (Vector2){x, y}, WHITE);
-    DrawTexture(tex_selector, x, y, GREEN);
+    //DrawTexture(tex_selector, x, y, GREEN);
+    DrawRectangleLinesEx((Rectangle){x,y,w,h}, 1.0f, GREEN);
 }
 
 const Viewport ViewportInit(int width, int height, int scale)
@@ -538,4 +556,9 @@ static void PlayerMoveY(float amount)
     }
 
     return;
+}
+
+Int2 GetPositionWindowToWorldGrid(Vector2 position)
+{
+    return (Int2){position.x / PIXEL_SIZE / GetWindowScaleDPI().x / TILE_WIDTH, position.y / PIXEL_SIZE / GetWindowScaleDPI().y / TILE_HEIGHT};
 }
